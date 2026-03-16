@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Manage your CRM integration sources.">
+    <title>Dashboard — CRM Hub</title>
+    <link rel="stylesheet" href="/index.css">
+</head>
+
+<body>
+    <div class="app-layout">
+        <div id="app-nav"></div>
+
+        <main class="app-main">
+            <header class="page-header">
+                <h1 class="page-title">Dashboard</h1>
+                <p class="page-subtitle">Overview of your connected CRM data sources.</p>
+            </header>
+
+            <!-- Stats Grid -->
+            <div class="stats-grid" id="dashboard-stats">
+                <div class="stat-card">
+                    <div class="stat-label">Total Connections</div>
+                    <div class="stat-value"><span class="spinner spinner-sm"></span></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Contacts</div>
+                    <div class="stat-value"><span class="spinner spinner-sm"></span></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Total Deals</div>
+                    <div class="stat-value"><span class="spinner spinner-sm"></span></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">System Health</div>
+                    <div class="stat-value"><span class="spinner spinner-sm"></span></div>
+                </div>
+            </div>
+
+            <!-- Connected Sources List -->
+            <section class="mt-xl">
+                <div class="flex items-center justify-between mb-md">
+                    <h2 class="text-xl font-bold">Connected Sources</h2>
+                    <a href="/connectors.html" class="btn btn-primary btn-sm">Add Connection</a>
+                </div>
+
+                <div class="source-list" id="source-list">
+                    <div class="loading-overlay">
+                        <span class="spinner"></span> Loading connections...
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script type="module" src="/dashboard.js"></script>
+</body>
+
+</html>
