@@ -418,7 +418,8 @@ app.get('/api/config-status', (req, res) => {
     salesforce_client_secret: process.env.SALESFORCE_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
     hubspot_client_id: process.env.HUBSPOT_CLIENT_ID ? '✅ loaded' : '❌ missing',
     hubspot_client_secret: process.env.HUBSPOT_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
-    hubspot_oauth_scopes: process.env.HUBSPOT_OAUTH_SCOPES || 'crm.objects.contacts.read crm.objects.companies.read',
+    hubspot_oauth_scopes_env: process.env.HUBSPOT_OAUTH_SCOPES || '(unset)',
+    hubspot_pkce_mode: 'enabled',
 
     backend_url: process.env.BACKEND_URL || 'auto-detect',
     frontend_url: process.env.FRONTEND_URL || 'auto-detect',
