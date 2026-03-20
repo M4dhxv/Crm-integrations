@@ -813,6 +813,101 @@ h4 { font-size: var(--font-size-lg); }
 }
 
 .provider-auth-type {
+  @@
+  @@/* Modern card with accent bar */
+  @@.provider-card.card-with-accent {
+  @@  padding: 0;
+  @@  background: var(--bg-card);
+  @@  border: 1px solid var(--border-subtle);
+  @@  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  @@}
+  @@
+  @@.provider-card.card-with-accent:hover {
+  @@  transform: translateY(-4px);
+  @@  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  @@}
+  @@
+  @@.card-accent-bar {
+  @@  height: 4px;
+  @@  width: 100%;
+  @@  border-radius: 8px 8px 0 0;
+  @@}
+  @@
+  @@.card-content {
+  @@  padding: var(--space-lg);
+  @@  flex: 1;
+  @@  display: flex;
+  @@  flex-direction: column;
+  @@}
+  @@
+  @@.card-header {
+  @@  display: flex;
+  @@  justify-content: space-between;
+  @@  align-items: flex-start;
+  @@  margin-bottom: 8px;
+  @@}
+  @@
+  @@.status-badge {
+  @@  font-size: 12px;
+  @@  font-weight: 600;
+  @@  padding: 4px 12px;
+  @@  border-radius: 12px;
+  @@  background: #f3f4f6;
+  @@  color: #374151;
+  @@  display: inline-block;
+  @@  white-space: nowrap;
+  @@}
+  @@
+  @@.status-badge.connected {
+  @@  background: #dbeafe;
+  @@  color: #1e40af;
+  @@}
+  @@
+  @@.data-points-section {
+  @@  margin: 16px 0;
+  @@  padding-top: 16px;
+  @@  border-top: 1px solid var(--border-subtle);
+  @@}
+  @@
+  @@.data-points-label {
+  @@  font-size: 11px;
+  @@  font-weight: 700;
+  @@  color: var(--text-secondary);
+  @@  text-transform: uppercase;
+  @@  letter-spacing: 0.5px;
+  @@  margin-bottom: 10px;
+  @@  display: block;
+  @@}
+  @@
+  @@.data-points-tags {
+  @@  display: flex;
+  @@  flex-wrap: wrap;
+  @@  gap: 8px;
+  @@}
+  @@
+  @@.data-point-tag {
+  @@  font-size: 12px;
+  @@  padding: 4px 10px;
+  @@  background: #f3f4f6;
+  @@  border: 1px solid #e5e7eb;
+  @@  border-radius: 4px;
+  @@  color: var(--text-primary);
+  @@  font-weight: 500;
+  @@}
+  @@
+  @@.card-actions {
+  @@  margin-top: auto;
+  @@  padding-top: 16px;
+  @@  border-top: 1px solid var(--border-subtle);
+  @@  display: flex;
+  @@  gap: 8px;
+  @@}
+  @@
+  @@.configure-btn {
+  @@  flex: 1;
+  @@  padding: 8px 12px;
+  @@  font-size: 14px;
+  @@}
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
 }

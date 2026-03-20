@@ -85,29 +85,36 @@ async function init() {
 function renderGrid() {
     const grid = document.getElementById('provider-grid');
 
-    grid.innerHTML = PROVIDERS.map(p => `
-    <div class="provider-card modern-card" data-id="${p.id}">
-      <div class="provider-card-header">
-        <div class="provider-icon ${p.bg}">${p.icon}</div>
-        <div class="provider-card-info">
-          <div class="provider-card-name">${p.name}</div>
-          <div class="provider-card-desc">${p.desc}</div>
+      grid.innerHTML = PROVIDERS.map(p => `
+      <div class="provider-card card-with-accent" data-id="${p.id}">
+        <div class="card-accent-bar ${p.bg}"></div>
+        <div class="card-content">
+          <div class="card-header">
+            <h3 class="provider-title">${p.name}</h3>
+            <span class="status-badge">Connect</span>
+          </div>
+          <p class="provider-desc">${p.desc}</p>
+          <div class="data-points-section">
+            <div class="data-points-label">AVAILABLE DATA POINTS</div>
+            <div class="data-points-tags">
+              ${p.objects.map(o => `<span class="data-point-tag">${o.name}</span>`).join('')}
+            </div>
+          </div>
+          <div class="card-actions">
+            <button class="btn btn-primary btn-sm configure-btn">Connect ${p.name}</button>
+          </div>
         </div>
       </div>
-      <div class="provider-card-tags">
-        ${p.tags.map(t => `<span class="provider-tag">${t}</span>`).join('')}
-      </div>
-      <div class="provider-card-footer">
-        <span class="provider-auth-type">${p.auth === 'oauth2' ? 'OAuth 2.0' : 'API Key'} required</span>
-        <button class="btn btn-secondary btn-sm">Configure</button>
-      </div>
-    </div>
-  `).join('');
+    `).join('');
 
     // Attach click handlers
-    grid.querySelectorAll('.provider-card').forEach(card => {
-        card.addEventListener('click', () => openPanel(card.dataset.id));
-    });
+      grid.querySelectorAll('.configure-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const cardId = btn.closest('.provider-card').dataset.id;
+              openPanel(cardId);
+          });
+      });
 }
 
 // ---- Panel Management ----
