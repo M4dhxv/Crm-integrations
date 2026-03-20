@@ -8,6 +8,7 @@
     "dev": "node --watch server.js",
     "start": "node server.js",
     "worker": "node worker.js",
+    "cron:sync": "node cron-sync.js",
     "dev:worker": "nodemon worker.js"
   },
   "dependencies": {
