@@ -29,23 +29,9 @@ export default defineConfig({
         deals: resolve(__dirname, 'deals.html'),
         normalization: resolve(__dirname, 'normalization.html'),
       },
-      external: [
-        'express', 
-        'cors', 
-        'dotenv', 
-        'axios', 
-        '@supabase/supabase-js',
-        /^\.\.\/backend\/.*$/,
-        /^\.\/api\/.*$/
-      ],
       output: {
         manualChunks: undefined
       }
     },
-  },
-  define: {
-    'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(process.env.VITE_SUPABASE_URL || ''),
-    'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(process.env.VITE_SUPABASE_ANON_KEY || ''),
-    'import.meta.env.VITE_BACKEND_URL': JSON.stringify(process.env.VITE_BACKEND_URL || ''),
-  },
+  }
 });
