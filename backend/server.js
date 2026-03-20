@@ -641,14 +641,15 @@ app.get(['/auth/hubspot', '/api/auth/hubspot'], (req, res) => {
   const backendUrl = process.env.BACKEND_URL || dynamicHost;
   const redirectUri = `${backendUrl}/api/callback/hubspot`;
   const clientId = process.env.HUBSPOT_CLIENT_ID;
-  const hubspotScopes = process.env.HUBSPOT_OAUTH_SCOPES || 'crm.objects.contacts.read crm.objects.companies.read';
+  const hubspotScopes = (process.env.HUBSPOT_OAUTH_SCOPES || '').trim();
   
   if (!clientId) {
     return res.status(400).json({ error: 'HubSpot OAuth not configured' });
   }
 
   const oauthState = state || userId;
-  const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(hubspotScopes)}&state=${encodeURIComponent(oauthState || '')}`;
+  const scopeQuery = hubspotScopes ? `&scope=${encodeURIComponent(hubspotScopes)}` : '';
+  const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}${scopeQuery}&state=${encodeURIComponent(oauthState || '')}`;
   res.redirect(authUrl);
 });
 
