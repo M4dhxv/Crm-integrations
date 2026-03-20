@@ -910,9 +910,6 @@ h4 { font-size: var(--font-size-lg); }
   padding: 8px 12px;
   font-size: 14px;
 }
-  font-size: var(--font-size-xs);
-  color: var(--text-tertiary);
-}
 
 /* ---- Slide Panel (Config Panel) ---- */
 .panel-overlay {
