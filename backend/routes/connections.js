@@ -4,6 +4,7 @@
  */
 
 import { Router } from 'express';
+import { processSyncJob } from '../sync/index.js';
 
 const router = Router();
 
@@ -202,7 +203,24 @@ router.post('/:id/sync', async (req, res, next) => {
         throw jobError;
       }
 
-      res.json({ data: createdJobs, message: `${jobs.length} sync jobs queued` });
+      // On serverless plans with limited cron jobs, opportunistically process 1 job now.
+      let processedNow = 0;
+      try {
+        if (createdJobs?.length && req.supabaseAdmin) {
+          const jobToRun = createdJobs[0];
+          const ok = await processSyncJob(jobToRun, req.supabaseAdmin);
+          processedNow = ok ? 1 : 0;
+        }
+      } catch (e) {
+        // Non-blocking: jobs remain queued even if immediate processing fails.
+        console.error('Inline sync processing failed:', e?.message || e);
+      }
+
+      res.json({
+        data: createdJobs,
+        message: `${jobs.length} sync jobs queued${processedNow ? `, ${processedNow} started immediately` : ''}`,
+        processedNow,
+      });
     } else {
       res.json({ data: [], message: 'No enabled objects to sync' });
     }

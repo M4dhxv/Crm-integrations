@@ -137,6 +137,7 @@ async function authMiddleware(req, res, next) {
     // Attach user context and a user-scoped Supabase client
     req.userId = user.id;
     req.user = user;
+    req.supabaseAdmin = supabaseAdmin;
     req.supabase = createClient(
       process.env.VITE_SUPABASE_URL,
       process.env.VITE_SUPABASE_ANON_KEY,
