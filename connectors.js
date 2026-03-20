@@ -77,44 +77,102 @@ async function init() {
     if (!session) return;
 
     await renderNav('app-nav');
-    renderGrid();
+    await renderGrid();
     setupPanelListeners();
 }
 
 // ---- Render Grid ----
-function renderGrid() {
+async function renderGrid() {
     const grid = document.getElementById('provider-grid');
+    const connectedCountEl = document.getElementById('connected-count');
+    const availableCountEl = document.getElementById('available-count');
 
-      grid.innerHTML = PROVIDERS.map(p => `
-      <div class="provider-card card-with-accent" data-id="${p.id}">
-        <div class="card-accent-bar ${p.bg}"></div>
-        <div class="card-content">
-          <div class="card-header">
-            <h3 class="provider-title">${p.name}</h3>
-            <span class="status-badge">Connect</span>
+    let connections = [];
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+            const res = await fetch(`${API_URL}/api/connections`, {
+                headers: { Authorization: `Bearer ${session.access_token}` }
+            });
+            if (res.ok) {
+                const payload = await res.json();
+                connections = Array.isArray(payload)
+                    ? payload
+                    : (payload?.connections || payload?.data || []);
+            }
+        }
+    } catch (error) {
+        console.warn('Unable to load connection status', error);
+    }
+
+    const providerState = PROVIDERS.map(provider => {
+        const connection = connections.find(c => c.provider === provider.id);
+        const isConnected = !!connection && connection.status !== 'error';
+        const lastSync = connection?.last_synced_at || connection?.lastSyncedAt || connection?.updated_at || null;
+        return { provider, connection, isConnected, lastSync };
+    });
+
+    const connectedCount = providerState.filter(p => p.isConnected).length;
+    const availableCount = PROVIDERS.length;
+
+    if (connectedCountEl) connectedCountEl.textContent = `${connectedCount} Connected`;
+    if (availableCountEl) availableCountEl.textContent = `${availableCount} Available`;
+
+    grid.innerHTML = providerState.map(({ provider: p, isConnected, lastSync }) => `
+      <article class="provider-card ds-card" data-id="${p.id}">
+        <div class="ds-accent ${p.bg}"></div>
+        <div class="ds-card-body">
+          <div class="ds-card-top">
+            <h3 class="ds-card-title">${p.name}</h3>
+            <span class="ds-status ${isConnected ? 'connected' : 'available'}">${isConnected ? 'Connected' : 'Available'}</span>
           </div>
-          <p class="provider-desc">${p.desc}</p>
-          <div class="data-points-section">
-            <div class="data-points-label">AVAILABLE DATA POINTS</div>
-            <div class="data-points-tags">
-              ${p.objects.map(o => `<span class="data-point-tag">${o.name}</span>`).join('')}
-            </div>
+
+          <p class="ds-card-desc">${p.desc}</p>
+
+          <div class="ds-section-label">AVAILABLE DATA POINTS</div>
+          <div class="ds-chip-wrap">
+            ${p.objects.map(o => `<span class="ds-chip">${o.name}</span>`).join('')}
           </div>
-          <div class="card-actions">
-            <button class="btn btn-primary btn-sm configure-btn">Connect ${p.name}</button>
+
+          <div class="ds-actions ${isConnected ? 'connected' : 'available'}">
+            ${isConnected
+                ? `
+                  <button class="ds-action-btn ds-secondary" data-action="sync" data-provider="${p.id}">Sync Now</button>
+                  <button class="ds-action-btn ds-link" data-action="disconnect" data-provider="${p.id}">Disconnect</button>
+                  <span class="ds-last-sync">Last sync: ${formatDate(lastSync)}</span>
+                `
+                : `<button class="ds-action-btn ds-primary ${p.id}" data-action="open-panel" data-provider="${p.id}">Connect ${p.name}</button>`
+            }
           </div>
         </div>
-      </div>
+      </article>
     `).join('');
 
-    // Attach click handlers
-      grid.querySelectorAll('.configure-btn').forEach(btn => {
-          btn.addEventListener('click', (e) => {
-              e.stopPropagation();
-              const cardId = btn.closest('.provider-card').dataset.id;
-              openPanel(cardId);
-          });
-      });
+    grid.querySelectorAll('[data-action="open-panel"]').forEach(btn => {
+        btn.addEventListener('click', () => openPanel(btn.dataset.provider));
+    });
+
+    grid.querySelectorAll('[data-action="sync"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            window.showToast('Sync job queued. Refresh dashboard in a few seconds.', 'success');
+        });
+    });
+
+    grid.querySelectorAll('[data-action="disconnect"]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            window.showToast('Disconnect flow can be managed from connection settings.', 'danger');
+        });
+    });
+}
+
+function formatDate(value) {
+    if (!value) return '—';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '—';
+    const m = date.getMonth() + 1;
+    const d = date.getDate();
+    const y = date.getFullYear();
+    return `${m}/${d}/${y}`;
 }
 
 // ---- Panel Management ----

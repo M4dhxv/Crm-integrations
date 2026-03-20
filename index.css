@@ -699,6 +699,247 @@ h4 { font-size: var(--font-size-lg); }
   padding: var(--space-lg) 0;
 }
 
+/* ---- Data Sources (Connectors) Exact Style ---- */
+.ds-hero {
+  max-width: 820px;
+  margin: 0 auto 20px;
+}
+
+.ds-hero-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ds-title {
+  margin: 0;
+  font-size: 38px;
+  line-height: 1.1;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.ds-subtitle {
+  margin: 10px 0 0;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #64748b;
+  max-width: 680px;
+}
+
+.ds-wizard-btn {
+  border: 1px solid #1e293b;
+  background: #0f172a;
+  color: #fff;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ds-badges {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+}
+
+.ds-badge {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #0f172a;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 12px;
+}
+
+.ds-tabs {
+  max-width: 820px;
+  margin: 0 auto 18px;
+  display: inline-flex;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.ds-tab {
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 9px 14px;
+  cursor: pointer;
+}
+
+.ds-tab.active {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+.provider-grid {
+  max-width: 820px;
+  margin: 0 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  padding-top: 6px;
+}
+
+.provider-card.ds-card {
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid #dbe3ee;
+  background: #ffffff;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+  overflow: hidden;
+}
+
+.provider-card.ds-card:hover {
+  transform: none;
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02);
+}
+
+.provider-card.ds-card::before {
+  display: none;
+}
+
+.ds-accent {
+  height: 4px;
+  width: 100%;
+}
+
+.ds-card-body {
+  padding: 16px 16px 14px;
+}
+
+.ds-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ds-card-title {
+  margin: 0;
+  font-size: 29px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #0f172a;
+}
+
+.ds-status {
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 4px 9px;
+  line-height: 1;
+}
+
+.ds-status.connected {
+  background: #0f172a;
+  color: #ffffff;
+}
+
+.ds-status.available {
+  background: #eef2f7;
+  color: #475569;
+}
+
+.ds-card-desc {
+  margin: 10px 0 14px;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.45;
+  min-height: 40px;
+}
+
+.ds-section-label {
+  margin: 0 0 8px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.ds-chip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ds-chip {
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+
+.ds-actions {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ds-action-btn {
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ds-action-btn.ds-primary {
+  border: 0;
+  color: #fff;
+}
+
+.ds-action-btn.ds-primary.salesforce { background: #1d4ed8; }
+.ds-action-btn.ds-primary.hubspot { background: #f97316; }
+.ds-action-btn.ds-primary.gong { background: #9333ea; }
+.ds-action-btn.ds-primary.pipedrive { background: #16a34a; }
+
+.ds-action-btn.ds-secondary {
+  background: #fff;
+  color: #0f172a;
+}
+
+.ds-action-btn.ds-link {
+  background: transparent;
+  border-color: transparent;
+  color: #0f172a;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.ds-last-sync {
+  margin-left: auto;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+@media (max-width: 980px) {
+  .provider-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ds-hero-top {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
 .provider-card {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
