@@ -14,6 +14,18 @@ const NAV_ITEMS = [
         icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg>`,
     },
     {
+      id: 'contacts',
+      label: 'Contacts',
+      href: '/contacts.html',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M23 11h-6"/></svg>`,
+    },
+    {
+      id: 'deals',
+      label: 'Deals',
+      href: '/deals.html',
+      icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>`,
+    },
+    {
         id: 'normalization',
         label: 'Normalization',
         href: '/normalization.html',
@@ -25,6 +37,8 @@ function getActivePage() {
     const path = window.location.pathname;
     if (path.includes('normalization')) return 'normalization';
     if (path.includes('connectors')) return 'connectors';
+  if (path.includes('contacts')) return 'contacts';
+  if (path.includes('deals')) return 'deals';
     return 'dashboard';
 }
 
