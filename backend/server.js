@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
 import crypto from 'crypto';
+import { processSyncJob } from './sync/index.js';
 import connectionsRouter from './routes/connections.js';
 import normalizationRouter from './routes/normalization.js';
 
@@ -247,6 +248,42 @@ function isUuid(value) {
   return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function getBearerToken(authHeader = '') {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  return authHeader.slice(7);
+}
+
+async function processPendingSyncJobsOnce(supabaseClient, limit = 5) {
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+
+  const { data: jobs, error } = await supabaseClient
+    .from('sync_jobs')
+    .select('*')
+    .or(`status.eq.pending,and(status.eq.running,started_at.lt.${oneHourAgo})`)
+    .order('created_at', { ascending: true })
+    .limit(limit);
+
+  if (error) throw error;
+
+  let processed = 0;
+  let succeeded = 0;
+  let failed = 0;
+
+  for (const job of jobs || []) {
+    processed += 1;
+    const ok = await processSyncJob(job, supabaseClient);
+    if (ok) succeeded += 1;
+    else failed += 1;
+  }
+
+  return {
+    queuedFound: (jobs || []).length,
+    processed,
+    succeeded,
+    failed,
+  };
+}
+
 
 // ============================================
 // HEALTH CHECK
@@ -333,6 +370,30 @@ app.get('/api/config-status', (req, res) => {
     backend_url: process.env.BACKEND_URL || 'auto-detect',
     frontend_url: process.env.FRONTEND_URL || 'auto-detect',
   });
+});
+
+// Vercel Cron endpoint to process sync queue (stateless worker)
+app.get('/api/cron/sync', async (req, res) => {
+  try {
+    if (!supabaseAdmin) {
+      return res.status(500).json({ error: 'Supabase is not configured' });
+    }
+
+    const configuredSecret = process.env.CRON_SECRET;
+    const headerToken = getBearerToken(req.headers.authorization || '');
+    const queryToken = typeof req.query.secret === 'string' ? req.query.secret : null;
+
+    // If CRON_SECRET is configured, require it.
+    if (configuredSecret && headerToken !== configuredSecret && queryToken !== configuredSecret) {
+      return res.status(401).json({ error: 'Unauthorized cron request' });
+    }
+
+    const result = await processPendingSyncJobsOnce(supabaseAdmin, 5);
+    return res.json({ ok: true, ...result, timestamp: new Date().toISOString() });
+  } catch (err) {
+    console.error('[Cron Sync] Failed:', err);
+    return res.status(500).json({ error: err.message || 'Cron sync failed' });
+  }
 });
 
 

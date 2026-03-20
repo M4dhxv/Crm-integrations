@@ -82,6 +82,16 @@ Value: https://[your-vercel-project].vercel.app
 Environments: Production, Preview, Development
 ```
 
+### Cron Worker Security (Recommended)
+
+```
+Name: CRON_SECRET
+Value: [Generate a long random secret]
+Environments: Production, Preview, Development
+```
+
+Used by `/api/cron/sync` to securely process queued sync jobs on Vercel Cron.
+
 ---
 
 ## Step 2: Get OAuth Credentials from CRM Platforms
@@ -189,6 +199,7 @@ Environments: Production, Preview, Development
 | `OUTREACH_CLIENT_SECRET` | ❌ | Outreach App | `secret...` |
 | `BACKEND_URL` | ❌ | Your Vercel URL | `https://myapp.vercel.app` |
 | `FRONTEND_URL` | ❌ | Your Vercel URL | `https://myapp.vercel.app` |
+| `CRON_SECRET` | ❌ (recommended) | Random secret you generate | `a-long-random-string` |
 
 ---
 
