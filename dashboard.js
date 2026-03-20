@@ -37,16 +37,31 @@ async function loadDashboardData() {
         const connRes = await fetch(`${API_URL}/api/connections`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!connRes.ok) throw new Error(`Failed to fetch connections: ${connRes.status}`);
+        
+        if (!connRes.ok) {
+            // Graceful fallback if backend is down
+            console.warn('Connections API error:', connRes.status);
+            renderStats({ connections: [], totalContacts: 0, totalDeals: 0, avgQualityScore: 0 });
+            renderEmptyState();
+            return;
+        }
+
         const connData = await connRes.json();
         const connections = connData.data || [];
+
+        // If no connections, show empty state
+        if (!connections || connections.length === 0) {
+            renderStats({ connections: [], totalContacts: 0, totalDeals: 0, avgQualityScore: 0 });
+            renderEmptyState();
+            return;
+        }
 
         // Fetch stats
         const statsRes = await fetch(`${API_URL}/api/normalized/stats`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        if (!statsRes.ok) throw new Error(`Failed to fetch stats: ${statsRes.status}`);
-        const statsData = await statsRes.json();
+        
+        const statsData = statsRes.ok ? await statsRes.json() : { avgQualityScore: 0 };
 
         let totalContacts = 0;
         let totalDeals = 0;
@@ -67,8 +82,21 @@ async function loadDashboardData() {
 
     } catch (error) {
         console.error('Error loading dashboard:', error);
-        showToast(`Failed to load dashboard data: ${error.message}`, 'error');
+        renderStats({ connections: [], totalContacts: 0, totalDeals: 0, avgQualityScore: 0 });
+        renderEmptyState();
     }
+}
+
+function renderEmptyState() {
+    const container = document.getElementById('source-list');
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-state-icon">🔌</div>
+        <h3 class="empty-state-title">No CRM connections yet</h3>
+        <p class="empty-state-text">Connect your first CRM to start syncing data into your unified dashboard.</p>
+        <a href="/connectors.html" class="btn btn-primary">Connect a CRM</a>
+      </div>
+    `;
 }
 
 function renderStats(data) {
