@@ -160,6 +160,17 @@ function createOAuthState(payload) {
   return token;
 }
 
+function getOAuthState(token) {
+  if (!token) return null;
+  const entry = oauthStateStore.get(token);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    oauthStateStore.delete(token);
+    return null;
+  }
+  return entry;
+}
+
 function consumeOAuthState(token, expectedProvider) {
   const entry = oauthStateStore.get(token);
   if (!entry) return null;
@@ -246,6 +257,20 @@ async function replaceConnectionObjects({
 
 function isUuid(value) {
   return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function toBase64Url(buffer) {
+  return buffer
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function createPkcePair() {
+  const verifier = toBase64Url(crypto.randomBytes(64));
+  const challenge = toBase64Url(crypto.createHash('sha256').update(verifier).digest());
+  return { verifier, challenge };
 }
 
 function getBearerToken(authHeader = '') {
@@ -709,8 +734,16 @@ app.get(['/auth/hubspot', '/api/auth/hubspot'], (req, res) => {
   }
 
   const oauthState = state || userId;
+  const stateEntry = getOAuthState(String(oauthState || ''));
+  const { verifier, challenge } = createPkcePair();
+
+  if (stateEntry) {
+    stateEntry.pkceVerifier = verifier;
+    oauthStateStore.set(String(oauthState), stateEntry);
+  }
+
   const scopeQuery = hubspotScopes ? `&scope=${encodeURIComponent(hubspotScopes)}` : '';
-  const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}${scopeQuery}&state=${encodeURIComponent(oauthState || '')}`;
+  const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}${scopeQuery}&state=${encodeURIComponent(oauthState || '')}&code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=S256`;
   res.redirect(authUrl);
 });
 
@@ -733,7 +766,8 @@ app.get(['/callback/hubspot', '/api/callback/hubspot'], async (req, res) => {
       client_id: process.env.HUBSPOT_CLIENT_ID,
       client_secret: process.env.HUBSPOT_CLIENT_SECRET,
       redirect_uri: `${backendUrl}/api/callback/hubspot`,
-      code
+      code,
+      ...(oauthState?.pkceVerifier ? { code_verifier: oauthState.pkceVerifier } : {})
     });
 
     const { access_token, refresh_token } = tokenRes.data;
