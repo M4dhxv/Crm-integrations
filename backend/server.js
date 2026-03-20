@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
+import crypto from 'crypto';
 import connectionsRouter from './routes/connections.js';
 import normalizationRouter from './routes/normalization.js';
 
@@ -15,6 +16,9 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const oauthStateStore = new Map();
 
 // Initialize Supabase admin client (service role)
 const supabaseAdmin = createClient(
@@ -87,6 +91,14 @@ setInterval(() => {
   }
 }, 60_000);
 
+// Periodic cleanup of OAuth state store
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, entry] of oauthStateStore) {
+    if (now > entry.expiresAt) oauthStateStore.delete(token);
+  }
+}, 60_000);
+
 // JWT Auth middleware for /api/* routes
 async function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -117,6 +129,104 @@ async function authMiddleware(req, res, next) {
     console.error('Auth middleware error:', err);
     return res.status(401).json({ error: 'Authentication failed' });
   }
+}
+
+function createOAuthState(payload) {
+  const token = crypto.randomUUID();
+  oauthStateStore.set(token, {
+    ...payload,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + OAUTH_STATE_TTL_MS,
+  });
+  return token;
+}
+
+function consumeOAuthState(token, expectedProvider) {
+  const entry = oauthStateStore.get(token);
+  if (!entry) return null;
+
+  oauthStateStore.delete(token);
+
+  if (Date.now() > entry.expiresAt) return null;
+  if (expectedProvider && entry.provider !== expectedProvider) return null;
+
+  return entry;
+}
+
+async function findConnectionByUserAndProvider(supabaseClient, userId, provider) {
+  const { data, error } = await supabaseClient
+    .from('data_source_connections')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('provider', provider)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function upsertConnectionByUserAndProvider({
+  supabaseClient,
+  userId,
+  provider,
+  patch,
+}) {
+  const existing = await findConnectionByUserAndProvider(supabaseClient, userId, provider);
+
+  if (existing) {
+    const { data, error } = await supabaseClient
+      .from('data_source_connections')
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq('id', existing.id)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  }
+
+  const { data, error } = await supabaseClient
+    .from('data_source_connections')
+    .insert({
+      user_id: userId,
+      provider,
+      ...patch,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+async function replaceConnectionObjects({
+  supabaseClient,
+  connectionId,
+  provider,
+  objects = [],
+}) {
+  await supabaseClient
+    .from('connector_objects')
+    .delete()
+    .eq('connection_id', connectionId);
+
+  if (!objects.length) return;
+
+  const rows = objects.map((obj) => ({
+    connection_id: connectionId,
+    provider,
+    object_type: typeof obj === 'string' ? obj : obj.id,
+    sync_enabled: true,
+  }));
+
+  const { error } = await supabaseClient.from('connector_objects').insert(rows);
+  if (error) throw error;
+}
+
+function isUuid(value) {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
 
@@ -187,7 +297,7 @@ app.use('/api/normalized', authMiddleware, normalizationRouter);
 
 // Start OAuth flow
 app.post('/api/start-oauth', authMiddleware, async (req, res) => {
-  const { provider } = req.body;
+  const { provider, displayName, syncFrequency, objects, instanceUrl } = req.body || {};
 
   const redirectUrls = {
     salesforce: `/api/auth/salesforce?userId=${req.userId}`,
@@ -198,31 +308,61 @@ app.post('/api/start-oauth', authMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'Provider not supported for OAuth' });
   }
 
+  try {
+    const connection = await upsertConnectionByUserAndProvider({
+      supabaseClient: req.supabase,
+      userId: req.userId,
+      provider,
+      patch: {
+        display_name: displayName || provider,
+        auth_type: 'oauth2',
+        sync_frequency: syncFrequency || 'hourly',
+        instance_url: instanceUrl || null,
+        status: 'pending',
+      },
+    });
+
+    const objectList = Array.isArray(objects) ? objects : [];
+    if (objectList.length > 0) {
+      await replaceConnectionObjects({
+        supabaseClient: req.supabase,
+        connectionId: connection.id,
+        provider,
+        objects: objectList,
+      });
+    }
+  } catch (err) {
+    console.error('Failed to initialize OAuth connection:', err);
+    return res.status(400).json({ error: err.message || 'Failed to initialize OAuth connection' });
+  }
+
   // DEMO MODE BYPASS: If no backend URL is set, we bypass real OAuth and simulate connection
   const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
   const backendUrl = process.env.BACKEND_URL || dynamicHost;
-  if (!backendUrl) {
+  if (!process.env.BACKEND_URL) {
     console.log(`[Demo Mode] Mocking ${provider} connection for user ${req.userId}...`);
     
     // Create a mock connection in the database
-    await req.supabase.from('data_source_connections').upsert({
-      user_id: req.userId,
-      provider: provider,
-      display_name: `${provider} (Demo Configuration)`,
-      auth_type: 'oauth2',
-      status: 'connected',
-      health_status: 'healthy',
-      sync_frequency: 'hourly',
-      contact_count: Math.floor(Math.random() * 5000),
-      deal_count: Math.floor(Math.random() * 300)
-    }, { onConflict: 'user_id,provider' });
+    await upsertConnectionByUserAndProvider({
+      supabaseClient: req.supabase,
+      userId: req.userId,
+      provider,
+      patch: {
+        display_name: `${provider} (Demo Configuration)`,
+        auth_type: 'oauth2',
+        status: 'connected',
+        sync_frequency: 'hourly',
+        last_connected_at: new Date().toISOString(),
+      }
+    });
 
     // Mock successful redirect directly back to frontend
     const frontendUrl = process.env.FRONTEND_URL || dynamicHost;
     return res.json({ redirectUrl: `${frontendUrl}/dashboard.html?status=success&provider=${provider}` });
   }
 
-  res.json({ redirectUrl: `${backendUrl}${redirectUrls[provider]}` });
+  const stateToken = createOAuthState({ userId: req.userId, provider });
+  res.json({ redirectUrl: `${backendUrl}${redirectUrls[provider]}&state=${encodeURIComponent(stateToken)}` });
 });
 
 async function handleManualConnectionAuth(req, res, forcedAuthType = null) {
@@ -250,11 +390,11 @@ async function handleManualConnectionAuth(req, res, forcedAuthType = null) {
     }
 
     // Upsert connection with provided credentials
-    const { data: connection, error: connError } = await req.supabase
-      .from('data_source_connections')
-      .upsert({
-        user_id: req.userId,
-        provider,
+    const connection = await upsertConnectionByUserAndProvider({
+      supabaseClient: req.supabase,
+      userId: req.userId,
+      provider,
+      patch: {
         display_name: displayName || provider,
         auth_type: forcedAuthType || authType || (accessToken ? 'oauth2' : 'api_key'),
         sync_frequency: syncFrequency || 'hourly',
@@ -268,31 +408,17 @@ async function handleManualConnectionAuth(req, res, forcedAuthType = null) {
         },
         status: 'connected',
         last_connected_at: new Date().toISOString(),
-      }, { onConflict: 'user_id,provider' })
-      .select()
-      .single();
-
-    if (connError) throw connError;
+      }
+    });
 
     // Refresh connector_objects records
     const objectsToCreate = objects || [];
-    await req.supabase
-      .from('connector_objects')
-      .delete()
-      .eq('connection_id', connection.id);
-
-    if (objectsToCreate.length > 0) {
-      const { error: objError } = await req.supabase
-        .from('connector_objects')
-        .insert(
-          objectsToCreate.map(obj => (
-            typeof obj === 'string' ? 
-              { connection_id: connection.id, provider, object_type: obj, sync_enabled: true } :
-              { connection_id: connection.id, provider, object_type: obj.id, sync_enabled: true }
-          ))
-        );
-      if (objError) throw objError;
-    }
+    await replaceConnectionObjects({
+      supabaseClient: req.supabase,
+      connectionId: connection.id,
+      provider,
+      objects: objectsToCreate,
+    });
 
     // Trigger immediate sync jobs for all enabled objects
     const jobsToCreate = (objectsToCreate || []).map(obj => ({
@@ -392,7 +518,7 @@ app.post('/api/connections/test-fetch', authMiddleware, async (req, res) => {
 
 // Salesforce OAuth
 app.get(['/auth/salesforce', '/api/auth/salesforce'], (req, res) => {
-  const { userId } = req.query;
+  const { userId, state } = req.query;
   const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
   const backendUrl = process.env.BACKEND_URL || dynamicHost;
   const redirectUri = `${backendUrl}/api/callback/salesforce`;
@@ -409,16 +535,24 @@ app.get(['/auth/salesforce', '/api/auth/salesforce'], (req, res) => {
     });
   }
 
-  const authUrl = `https://login.salesforce.com/services/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&state=${userId}`;
+  const oauthState = state || userId;
+  const authUrl = `https://login.salesforce.com/services/oauth2/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${encodeURIComponent(oauthState || '')}`;
   res.redirect(authUrl);
 });
 
 app.get(['/callback/salesforce', '/api/callback/salesforce'], async (req, res) => {
   const { code, state } = req.query;
+  const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+  const frontendUrl = process.env.FRONTEND_URL || dynamicHost || 'http://localhost:5173';
   
   try {
-    const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
     const backendUrl = process.env.BACKEND_URL || dynamicHost;
+    const oauthState = consumeOAuthState(String(state || ''), 'salesforce');
+    const userId = oauthState?.userId || (isUuid(state) ? state : null);
+
+    if (!userId || !code) {
+      return res.redirect(`${frontendUrl}/dashboard.html?status=error&provider=salesforce`);
+    }
     
     const tokenRes = await axios.post('https://login.salesforce.com/services/oauth2/token', null, {
       params: {
@@ -431,30 +565,31 @@ app.get(['/callback/salesforce', '/api/callback/salesforce'], async (req, res) =
     });
 
     const { access_token, instance_url } = tokenRes.data;
-
-    await supabaseAdmin
-      .from('data_source_connections')
-      .update({
+    await upsertConnectionByUserAndProvider({
+      supabaseClient: supabaseAdmin,
+      userId,
+      provider: 'salesforce',
+      patch: {
+        display_name: 'salesforce',
+        auth_type: 'oauth2',
         status: 'connected',
         credentials: { access_token, instance_url },
-        last_connected_at: new Date().toISOString()
-      })
-      .eq('user_id', state)
-      .eq('provider', 'salesforce');
+        instance_url,
+        last_connected_at: new Date().toISOString(),
+      }
+    });
 
-    console.log(`[${new Date().toISOString()}] INFO OAuth completed for salesforce (user: ${state})`);
-    const frontendUrl = process.env.FRONTEND_URL || dynamicHost;
+    console.log(`[${new Date().toISOString()}] INFO OAuth completed for salesforce (user: ${userId})`);
     res.redirect(`${frontendUrl}/dashboard.html?status=success&provider=salesforce`);
   } catch (err) {
     console.error(`[${new Date().toISOString()}] ERROR Salesforce OAuth:`, err.message);
-    const frontendUrl = process.env.FRONTEND_URL || dynamicHost || 'http://localhost:5173';
     res.redirect(`${frontendUrl}/dashboard.html?status=error&provider=salesforce`);
   }
 });
 
 // HubSpot OAuth
 app.get(['/auth/hubspot', '/api/auth/hubspot'], (req, res) => {
-  const { userId } = req.query;
+  const { userId, state } = req.query;
   const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
   const backendUrl = process.env.BACKEND_URL || dynamicHost;
   const redirectUri = `${backendUrl}/api/callback/hubspot`;
@@ -464,16 +599,24 @@ app.get(['/auth/hubspot', '/api/auth/hubspot'], (req, res) => {
     return res.status(400).json({ error: 'HubSpot OAuth not configured' });
   }
 
-  const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=crm.objects.contacts.read%20crm.objects.companies.read&state=${userId}`;
+  const oauthState = state || userId;
+  const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('crm.objects.contacts.read crm.objects.companies.read')}&state=${encodeURIComponent(oauthState || '')}`;
   res.redirect(authUrl);
 });
 
 app.get(['/callback/hubspot', '/api/callback/hubspot'], async (req, res) => {
   const { code, state } = req.query;
+  const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+  const frontendUrl = process.env.FRONTEND_URL || dynamicHost || 'http://localhost:5173';
   
   try {
-    const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
     const backendUrl = process.env.BACKEND_URL || dynamicHost;
+    const oauthState = consumeOAuthState(String(state || ''), 'hubspot');
+    const userId = oauthState?.userId || (isUuid(state) ? state : null);
+
+    if (!userId || !code) {
+      return res.redirect(`${frontendUrl}/dashboard.html?status=error&provider=hubspot`);
+    }
 
     const tokenRes = await axios.post('https://api.hubapi.com/oauth/v1/token', {
       grant_type: 'authorization_code',
@@ -484,30 +627,30 @@ app.get(['/callback/hubspot', '/api/callback/hubspot'], async (req, res) => {
     });
 
     const { access_token, refresh_token } = tokenRes.data;
-
-    await supabaseAdmin
-      .from('data_source_connections')
-      .update({
+    await upsertConnectionByUserAndProvider({
+      supabaseClient: supabaseAdmin,
+      userId,
+      provider: 'hubspot',
+      patch: {
+        display_name: 'hubspot',
+        auth_type: 'oauth2',
         status: 'connected',
         credentials: { access_token, refresh_token },
-        last_connected_at: new Date().toISOString()
-      })
-      .eq('user_id', state)
-      .eq('provider', 'hubspot');
+        last_connected_at: new Date().toISOString(),
+      }
+    });
 
-    console.log(`[${new Date().toISOString()}] INFO OAuth completed for hubspot (user: ${state})`);
-    const frontendUrl = process.env.FRONTEND_URL || dynamicHost;
+    console.log(`[${new Date().toISOString()}] INFO OAuth completed for hubspot (user: ${userId})`);
     res.redirect(`${frontendUrl}/dashboard.html?status=success&provider=hubspot`);
   } catch (err) {
     console.error(`[${new Date().toISOString()}] ERROR HubSpot OAuth:`, err.message);
-    const frontendUrl = process.env.FRONTEND_URL || dynamicHost || 'http://localhost:5173';
     res.redirect(`${frontendUrl}/dashboard.html?status=error&provider=hubspot`);
   }
 });
 
 // Outreach OAuth
 app.get(['/auth/outreach', '/api/auth/outreach'], (req, res) => {
-  const { userId } = req.query;
+  const { userId, state } = req.query;
   const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
   const backendUrl = process.env.BACKEND_URL || dynamicHost;
   const redirectUri = `${backendUrl}/api/callback/outreach`;
@@ -517,16 +660,24 @@ app.get(['/auth/outreach', '/api/auth/outreach'], (req, res) => {
     return res.status(400).json({ error: 'Outreach OAuth not configured' });
   }
 
-  const authUrl = `https://api.outreach.io/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&state=${userId}`;
+  const oauthState = state || userId;
+  const authUrl = `https://api.outreach.io/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${encodeURIComponent(oauthState || '')}`;
   res.redirect(authUrl);
 });
 
 app.get(['/callback/outreach', '/api/callback/outreach'], async (req, res) => {
   const { code, state } = req.query;
+  const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+  const frontendUrl = process.env.FRONTEND_URL || dynamicHost || 'http://localhost:5173';
   
   try {
-    const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
     const backendUrl = process.env.BACKEND_URL || dynamicHost;
+    const oauthState = consumeOAuthState(String(state || ''), 'outreach');
+    const userId = oauthState?.userId || (isUuid(state) ? state : null);
+
+    if (!userId || !code) {
+      return res.redirect(`${frontendUrl}/dashboard.html?status=error&provider=outreach`);
+    }
 
     const tokenRes = await axios.post('https://api.outreach.io/oauth/token', {
       grant_type: 'authorization_code',
@@ -537,23 +688,23 @@ app.get(['/callback/outreach', '/api/callback/outreach'], async (req, res) => {
     });
 
     const { access_token } = tokenRes.data;
-
-    await supabaseAdmin
-      .from('data_source_connections')
-      .update({
+    await upsertConnectionByUserAndProvider({
+      supabaseClient: supabaseAdmin,
+      userId,
+      provider: 'outreach',
+      patch: {
+        display_name: 'outreach',
+        auth_type: 'oauth2',
         status: 'connected',
         credentials: { access_token },
-        last_connected_at: new Date().toISOString()
-      })
-      .eq('user_id', state)
-      .eq('provider', 'outreach');
+        last_connected_at: new Date().toISOString(),
+      }
+    });
 
-    console.log(`[${new Date().toISOString()}] INFO OAuth completed for outreach (user: ${state})`);
-    const frontendUrl = process.env.FRONTEND_URL || dynamicHost;
+    console.log(`[${new Date().toISOString()}] INFO OAuth completed for outreach (user: ${userId})`);
     res.redirect(`${frontendUrl}/dashboard.html?status=success&provider=outreach`);
   } catch (err) {
     console.error(`[${new Date().toISOString()}] ERROR Outreach OAuth:`, err.message);
-    const frontendUrl = process.env.FRONTEND_URL || dynamicHost || 'http://localhost:5173';
     res.redirect(`${frontendUrl}/dashboard.html?status=error&provider=outreach`);
   }
 });

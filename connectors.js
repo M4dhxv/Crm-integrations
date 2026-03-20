@@ -314,20 +314,39 @@ function openPanel(providerId) {
                 const { data: { session } } = await supabase.auth.getSession();
                 if (!session) throw new Error('Not logged in');
 
+                const selectedObjects = [];
+                document.querySelectorAll('.obj-toggle:checked').forEach(checkbox => {
+                  selectedObjects.push(checkbox.dataset.objId);
+                });
+
+                const instanceUrl = document.getElementById('cfg-instanceUrl')?.value?.trim();
+                const syncFrequency = document.getElementById('cfg-freq')?.value || 'hourly';
+
                 const res = await fetch(`${API_URL}/api/start-oauth`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Bearer ${session.access_token}`
                     },
-                    body: JSON.stringify({ provider: activeProvider.id })
+                  body: JSON.stringify({
+                    provider: activeProvider.id,
+                    displayName: activeProvider.name,
+                    syncFrequency,
+                    objects: selectedObjects,
+                    instanceUrl
+                  })
                 });
 
-                const data = await res.json();
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                  throw new Error(data.error || 'Failed to start OAuth flow');
+                }
                 if (data.error) throw new Error(data.error);
 
                 if (data.redirectUrl) {
                     window.location.href = data.redirectUrl;
+                } else {
+                  throw new Error('OAuth redirect URL missing from server response');
                 }
             } catch (err) {
                 console.error(err);
