@@ -17,6 +17,7 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+const BUILD_COMMIT = process.env.VERCEL_GIT_COMMIT_SHA || process.env.COMMIT_SHA || 'unknown';
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const oauthStateStore = new Map();
@@ -400,6 +401,7 @@ app.get('/api/health', async (req, res) => {
   res.status(allOk ? 200 : 503).json({
     status: allOk ? 'healthy' : 'degraded',
     checks,
+    build_commit: BUILD_COMMIT,
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
   });
@@ -408,6 +410,7 @@ app.get('/api/health', async (req, res) => {
 // Debug endpoint to check env vars are loaded
 app.get('/api/config-status', (req, res) => {
   res.json({
+    build_commit: BUILD_COMMIT,
     supabase_url: process.env.VITE_SUPABASE_URL ? '✅ loaded' : '❌ missing',
     supabase_anon_key: process.env.VITE_SUPABASE_ANON_KEY ? '✅ loaded' : '❌ missing',
     supabase_service_key: process.env.SUPABASE_SERVICE_KEY ? '✅ loaded' : '❌ missing',
