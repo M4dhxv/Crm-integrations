@@ -813,7 +813,9 @@ h4 { font-size: var(--font-size-lg); }
 }
 
 .provider-auth-type {
-
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
 /* Modern card with accent bar */
 .provider-card.card-with-accent {
   padding: 0;
