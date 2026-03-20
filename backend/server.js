@@ -541,6 +541,26 @@ app.post('/api/start-oauth', authMiddleware, async (req, res) => {
   res.json({ redirectUrl: `${backendUrl}${redirectUrls[provider]}&state=${encodeURIComponent(stateToken)}` });
 });
 
+async function validateHubSpotAccessToken(accessToken) {
+  if (!accessToken) return;
+
+  try {
+    await axios.get('https://api.hubapi.com/crm/v3/objects/contacts', {
+      params: { limit: 1 },
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      timeout: 15000,
+    });
+  } catch (error) {
+    const status = error?.response?.status;
+    if (status === 401 || status === 403) {
+      throw new Error('Invalid HubSpot token or missing scopes. Please generate a valid token with CRM read scopes and try again.');
+    }
+    throw new Error(`Failed to validate HubSpot token: ${error.message}`);
+  }
+}
+
 async function handleManualConnectionAuth(req, res, forcedAuthType = null) {
   try {
     const {
@@ -563,6 +583,11 @@ async function handleManualConnectionAuth(req, res, forcedAuthType = null) {
     const hasCredentials = Boolean(apiKey || accessKey || accessToken || refreshToken);
     if (!hasCredentials) {
       return res.status(400).json({ error: 'At least one credential is required' });
+    }
+
+    // Validate HubSpot token up-front so we fail fast instead of creating broken connections.
+    if (provider === 'hubspot' && accessToken) {
+      await validateHubSpotAccessToken(accessToken);
     }
 
     // Upsert connection with provided credentials
