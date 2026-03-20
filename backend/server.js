@@ -191,8 +191,7 @@ app.post('/api/start-oauth', authMiddleware, async (req, res) => {
 
   const redirectUrls = {
     salesforce: `/api/auth/salesforce?userId=${req.userId}`,
-    hubspot: `/api/auth/hubspot?userId=${req.userId}`,
-
+    hubspot: `/api/auth/hubspot?userId=${req.userId}`
   };
 
   if (!redirectUrls[provider]) {
