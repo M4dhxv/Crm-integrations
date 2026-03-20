@@ -8,8 +8,7 @@ const PROVIDERS = {
   hubspot:    { name: 'HubSpot',    icon: '🟧', bg: 'provider-hubspot',    color: '#ff5c35' },
   gong:       { name: 'Gong',       icon: '🟣', bg: 'provider-gong',       color: '#7c3aed' },
   pipedrive:  { name: 'Pipedrive',  icon: '🟢', bg: 'provider-pipedrive',  color: '#017737' },
-  outreach:   { name: 'Outreach',   icon: '🟣', bg: 'provider-outreach',   color: '#5952cc' },
-  freshsales: { name: 'Freshsales', icon: '🟠', bg: 'provider-freshsales', color: '#f36f21' },
+
 };
 
 // ---- Init ----

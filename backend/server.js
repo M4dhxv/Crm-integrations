@@ -172,8 +172,7 @@ app.get('/api/config-status', (req, res) => {
     salesforce_client_secret: process.env.SALESFORCE_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
     hubspot_client_id: process.env.HUBSPOT_CLIENT_ID ? '✅ loaded' : '❌ missing',
     hubspot_client_secret: process.env.HUBSPOT_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
-    outreach_client_id: process.env.OUTREACH_CLIENT_ID ? '✅ loaded' : '❌ missing',
-    outreach_client_secret: process.env.OUTREACH_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
+
     backend_url: process.env.BACKEND_URL || 'auto-detect',
     frontend_url: process.env.FRONTEND_URL || 'auto-detect',
   });
@@ -193,7 +192,7 @@ app.post('/api/start-oauth', authMiddleware, async (req, res) => {
   const redirectUrls = {
     salesforce: `/api/auth/salesforce?userId=${req.userId}`,
     hubspot: `/api/auth/hubspot?userId=${req.userId}`,
-    outreach: `/api/auth/outreach?userId=${req.userId}`
+
   };
 
   if (!redirectUrls[provider]) {

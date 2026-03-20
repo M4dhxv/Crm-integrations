@@ -10,8 +10,7 @@ const PROVIDERS = {
     hubspot: { name: 'HubSpot', iconClass: 'provider-hubspot', icon: '🟧' },
     gong: { name: 'Gong', iconClass: 'provider-gong', icon: '🟣' },
     pipedrive: { name: 'Pipedrive', iconClass: 'provider-pipedrive', icon: '🟢' },
-    outreach: { name: 'Outreach', iconClass: 'provider-outreach', icon: '🟣' },
-    freshsales: { name: 'Freshsales', iconClass: 'provider-freshsales', icon: '🟠' }
+
 };
 
 async function init() {

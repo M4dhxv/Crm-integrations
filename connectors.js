@@ -65,35 +65,6 @@ const PROVIDERS = [
             { id: 'organizations', name: 'Organizations', desc: 'Sync companies' },
             { id: 'deals', name: 'Deals', desc: 'Sync opportunities' }
         ]
-    },
-    {
-        id: 'outreach',
-        name: 'Outreach',
-        desc: 'Sync Prospects, Accounts, and Sequence Activity.',
-        auth: 'oauth2',
-        icon: '🟣',
-        bg: 'provider-outreach',
-        tags: ['Sales Engagement'],
-        objects: [
-            { id: 'prospects', name: 'Prospects', desc: 'Sync targets' },
-            { id: 'sequences', name: 'Sequences', desc: 'Sync outreach flows' },
-            { id: 'mailings', name: 'Mailings', desc: 'Sync sent emails' }
-        ]
-    },
-    {
-        id: 'freshsales',
-        name: 'Freshsales',
-        desc: 'Sync Contacts, Accounts, and Deals.',
-        auth: 'api_key',
-        icon: '🟠',
-        bg: 'provider-freshsales',
-        tags: ['Sales', 'Suite'],
-        fields: [{ id: 'instanceUrl', label: 'Bundle Alias', desc: 'e.g. domain.freshworks.com' }],
-        objects: [
-            { id: 'contacts', name: 'Contacts', desc: 'Sync people' },
-            { id: 'accounts', name: 'Accounts', desc: 'Sync organizations' },
-            { id: 'deals', name: 'Deals', desc: 'Sync pipeline' }
-        ]
     }
 ];
 
@@ -115,7 +86,7 @@ function renderGrid() {
     const grid = document.getElementById('provider-grid');
 
     grid.innerHTML = PROVIDERS.map(p => `
-    <div class="provider-card" data-id="${p.id}">
+    <div class="provider-card modern-card" data-id="${p.id}">
       <div class="provider-card-header">
         <div class="provider-icon ${p.bg}">${p.icon}</div>
         <div class="provider-card-info">

@@ -6,7 +6,7 @@ The Hub connects to external providers via OAuth, pulls records (Contacts, Deals
 
 ## Features
 
-- **Multi-Provider Connections**: Native support mappings and OAuth flows for Salesforce, HubSpot, Pipedrive, Gong, Outreach, and Freshsales.
+- **Multi-Provider Connections**: Native support mappings and OAuth flows for Salesforce, HubSpot, Pipedrive, and Gong.
 - **Data Normalization Engine**: Translates complex, distinct API definitions into a single, unified database schema. Evaluates emails (RFC-5322 pattern), format-checks phone numbers to E.164 standard, standardizes currency ISOs, and Title Casing inputs.
 - **Data Quality Scoring**: Weights record completeness per entity out of 100 on an interactive dashboard.
 - **Production Hardened**: In-memory rate limiting, IP tracking, structured logging, JWT Supabase integrations, and central error handlers.
