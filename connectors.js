@@ -179,6 +179,19 @@ function openPanel(providerId) {
             <button class="btn btn-oauth btn-block" id="btn-auth-flow">
               Connect to ${activeProvider.name}
             </button>
+            <div class="form-group mt-md">
+              <label class="form-label">OR paste Access Token</label>
+              <input type="password" class="form-input" id="cfg-access-token" placeholder="Paste OAuth access token">
+              <span class="form-hint">Use this when OAuth app credentials are not configured yet.</span>
+            </div>
+            <div class="form-group mt-sm">
+              <label class="form-label">Refresh Token (optional)</label>
+              <input type="password" class="form-input" id="cfg-refresh-token" placeholder="Paste OAuth refresh token">
+            </div>
+            <div class="form-group mt-sm">
+              <label class="form-label">Instance URL (optional)</label>
+              <input type="text" class="form-input" id="cfg-instanceUrl" placeholder="e.g. https://your-domain.my.salesforce.com">
+            </div>
           `
             : `
             <div class="form-group">
@@ -361,13 +374,13 @@ async function saveConnection() {
         payload.accessKey = accessKey;
         payload.instanceUrl = instanceUrl;
 
-        const res = await fetch(`${API_URL}/api/connections/auth-key`, {
+        const res = await fetch(`${API_URL}/api/connections/auth-manual`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify(payload)
+          body: JSON.stringify({ ...payload, authType: 'api_key' })
         });
 
         if (!res.ok) {
@@ -378,11 +391,58 @@ async function saveConnection() {
         return res.json();
     }
 
-    // For OAuth providers, just create pending connection
+    // For OAuth providers: support both OAuth redirect and manual token save
     if (activeProvider.auth === 'oauth2') {
-        // For now, the OAuth flow handles this via start-oauth endpoint
-        // This is a placeholder for consistency
-        return { success: true };
+      const accessToken = document.getElementById('cfg-access-token')?.value;
+      const refreshToken = document.getElementById('cfg-refresh-token')?.value;
+      const instanceUrl = document.getElementById('cfg-instanceUrl')?.value;
+
+      if (accessToken || refreshToken) {
+        const res = await fetch(`${API_URL}/api/connections/auth-manual`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            ...payload,
+            authType: 'oauth2',
+            accessToken,
+            refreshToken,
+            instanceUrl
+          })
+        });
+
+        if (!res.ok) {
+          const error = await res.json();
+          throw new Error(error.error || 'Failed to save OAuth token connection');
+        }
+
+        return res.json();
+      }
+
+      // Save pending OAuth connection (user can click OAuth button to authorize)
+      const res = await fetch(`${API_URL}/api/connections`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          provider: activeProvider.id,
+          displayName: activeProvider.name,
+          authType: 'oauth2',
+          syncFrequency,
+          objects: selectedObjects
+        })
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Failed to save OAuth connection');
+      }
+
+      return res.json();
     }
 
     throw new Error('Unknown auth type');

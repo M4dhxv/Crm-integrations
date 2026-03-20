@@ -142,6 +142,26 @@ app.get('/health', async (req, res) => {
   });
 });
 
+// Vercel-friendly health alias
+app.get('/api/health', async (req, res) => {
+  const checks = { server: 'ok', supabase: 'unknown' };
+
+  try {
+    const { error } = await supabaseAdmin.from('connector_registry').select('provider').limit(1);
+    checks.supabase = error ? 'error' : 'ok';
+  } catch {
+    checks.supabase = 'error';
+  }
+
+  const allOk = Object.values(checks).every(v => v === 'ok');
+  res.status(allOk ? 200 : 503).json({
+    status: allOk ? 'healthy' : 'degraded',
+    checks,
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
 
 // ============================================
 // API ROUTES (authenticated)
@@ -190,48 +210,70 @@ app.post('/api/start-oauth', authMiddleware, async (req, res) => {
   res.json({ redirectUrl: `${backendUrl}${redirectUrls[provider]}` });
 });
 
-// API Key auth endpoint for Gong, Pipedrive, Freshsales
-app.post('/api/connections/auth-key', authMiddleware, async (req, res) => {
+async function handleManualConnectionAuth(req, res, forcedAuthType = null) {
   try {
-    const { provider, apiKey, accessKey, instanceUrl, displayName, objects, syncFrequency } = req.body;
+    const {
+      provider,
+      apiKey,
+      accessKey,
+      accessToken,
+      refreshToken,
+      instanceUrl,
+      displayName,
+      objects,
+      syncFrequency,
+      authType,
+    } = req.body;
 
-    if (!provider || (!apiKey && !accessKey)) {
-      return res.status(400).json({ error: 'Provider and API key are required' });
+    if (!provider) {
+      return res.status(400).json({ error: 'Provider is required' });
     }
 
-    // Create connection with API key credentials
+    const hasCredentials = Boolean(apiKey || accessKey || accessToken || refreshToken);
+    if (!hasCredentials) {
+      return res.status(400).json({ error: 'At least one credential is required' });
+    }
+
+    // Upsert connection with provided credentials
     const { data: connection, error: connError } = await req.supabase
       .from('data_source_connections')
-      .insert({
+      .upsert({
         user_id: req.userId,
         provider,
         display_name: displayName || provider,
-        auth_type: 'api_key',
+        auth_type: forcedAuthType || authType || (accessToken ? 'oauth2' : 'api_key'),
         sync_frequency: syncFrequency || 'hourly',
         instance_url: instanceUrl || null,
         credentials: {
           apiKey: apiKey || null,
           accessKey: accessKey || null,
+          access_token: accessToken || null,
+          refresh_token: refreshToken || null,
           instanceUrl: instanceUrl || null
         },
         status: 'connected',
         last_connected_at: new Date().toISOString(),
-      })
+      }, { onConflict: 'user_id,provider' })
       .select()
       .single();
 
     if (connError) throw connError;
 
-    // Create connector_objects records
+    // Refresh connector_objects records
     const objectsToCreate = objects || [];
+    await req.supabase
+      .from('connector_objects')
+      .delete()
+      .eq('connection_id', connection.id);
+
     if (objectsToCreate.length > 0) {
       const { error: objError } = await req.supabase
         .from('connector_objects')
         .insert(
           objectsToCreate.map(obj => (
             typeof obj === 'string' ? 
-              { connection_id: connection.id, object_type: obj, sync_enabled: true } :
-              { connection_id: connection.id, object_type: obj.id, sync_enabled: true }
+              { connection_id: connection.id, provider, object_type: obj, sync_enabled: true } :
+              { connection_id: connection.id, provider, object_type: obj.id, sync_enabled: true }
           ))
         );
       if (objError) throw objError;
@@ -239,9 +281,19 @@ app.post('/api/connections/auth-key', authMiddleware, async (req, res) => {
 
     res.status(201).json({ data: connection, message: 'Connection created successfully' });
   } catch (err) {
-    console.error('API Key auth error:', err);
+    console.error('Manual auth error:', err);
     res.status(400).json({ error: err.message });
   }
+}
+
+// Manual credential auth endpoint for all providers
+app.post('/api/connections/auth-manual', authMiddleware, async (req, res) => {
+  await handleManualConnectionAuth(req, res);
+});
+
+// Backward-compatible API key endpoint
+app.post('/api/connections/auth-key', authMiddleware, async (req, res) => {
+  await handleManualConnectionAuth(req, res, 'api_key');
 });
 
 
