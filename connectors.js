@@ -2,6 +2,8 @@ import { requireAuth } from './auth.js';
 import { renderNav } from './nav.js';
 import { supabase } from './supabase.js';
 
+const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+
 // ---- Provider Configuration Data (Simulating `connector_registry` table) ----
 const PROVIDERS = [
     {
@@ -263,7 +265,7 @@ function openPanel(providerId) {
                 const { data: { session } } = await supabase.auth.getSession();
                 if (!session) throw new Error('Not logged in');
 
-                const res = await fetch('http://localhost:3001/api/start-oauth', {
+                const res = await fetch(`${API_URL}/api/start-oauth`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

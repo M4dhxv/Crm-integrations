@@ -2,6 +2,8 @@ import { requireAuth } from './auth.js';
 import { renderNav } from './nav.js';
 import { supabase } from './supabase.js';
 
+const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+
 // Provider static data for UI
 const PROVIDERS = {
     salesforce: { name: 'Salesforce', iconClass: 'provider-salesforce', icon: '☁️' },
@@ -165,13 +167,13 @@ async function loadData() {
         if (!session) return { stats: null, connections: [] };
 
         const token = session.access_token;
-        const connRes = await fetch('http://localhost:3001/api/connections', {
+        const connRes = await fetch(`${API_URL}/api/connections`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         const connData = await connRes.json();
         const connections = connData.data || [];
 
-        const statsRes = await fetch('http://localhost:3001/api/normalized/stats', {
+        const statsRes = await fetch(`${API_URL}/api/normalized/stats`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         const statsData = await statsRes.json();
@@ -206,7 +208,7 @@ window.disconnectProvider = async function(connId) {
         const btn = event.currentTarget.querySelector('svg');
         if (btn) btn.innerHTML = '<span class="spinner spinner-sm"></span>';
 
-        const res = await fetch(`http://localhost:3001/api/connections/${connId}`, {
+        const res = await fetch(`${API_URL}/api/connections/${connId}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${session.access_token}` }
         });
