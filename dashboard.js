@@ -24,18 +24,50 @@ async function init() {
 
 async function loadDashboardData() {
     try {
-        // In a real app we would query the dashboard_stats view:
-        // const { data, error } = await supabase.from('dashboard_stats').select('*');
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+            showToast('Please log in to view dashboard', 'error');
+            return;
+        }
 
-        // For this UI mockup without backend data populated, we'll simulate it:
-        const mockData = await simulateSupabaseFetch();
+        // Load real data from backend
+        const token = session.access_token;
+        
+        // Fetch connections
+        const connRes = await fetch(`${API_URL}/api/connections`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!connRes.ok) throw new Error(`Failed to fetch connections: ${connRes.status}`);
+        const connData = await connRes.json();
+        const connections = connData.data || [];
+
+        // Fetch stats
+        const statsRes = await fetch(`${API_URL}/api/normalized/stats`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!statsRes.ok) throw new Error(`Failed to fetch stats: ${statsRes.status}`);
+        const statsData = await statsRes.json();
+
+        let totalContacts = 0;
+        let totalDeals = 0;
+        connections.forEach(c => {
+            totalContacts += (c.contact_count || 0);
+            totalDeals += (c.deal_count || 0);
+        });
+
+        const mockData = {
+            totalContacts: totalContacts,
+            totalDeals: totalDeals,
+            avgQualityScore: statsData.avgQualityScore || 0,
+            connections: connections
+        };
 
         renderStats(mockData);
         renderSourceList(mockData.connections);
 
     } catch (error) {
         console.error('Error loading dashboard:', error);
-        showToast('Failed to load dashboard data', 'error');
+        showToast(`Failed to load dashboard data: ${error.message}`, 'error');
     }
 }
 

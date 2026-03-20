@@ -190,6 +190,60 @@ app.post('/api/start-oauth', authMiddleware, async (req, res) => {
   res.json({ redirectUrl: `${backendUrl}${redirectUrls[provider]}` });
 });
 
+// API Key auth endpoint for Gong, Pipedrive, Freshsales
+app.post('/api/connections/auth-key', authMiddleware, async (req, res) => {
+  try {
+    const { provider, apiKey, accessKey, instanceUrl, displayName, objects, syncFrequency } = req.body;
+
+    if (!provider || (!apiKey && !accessKey)) {
+      return res.status(400).json({ error: 'Provider and API key are required' });
+    }
+
+    // Create connection with API key credentials
+    const { data: connection, error: connError } = await req.supabase
+      .from('data_source_connections')
+      .insert({
+        user_id: req.userId,
+        provider,
+        display_name: displayName || provider,
+        auth_type: 'api_key',
+        sync_frequency: syncFrequency || 'hourly',
+        instance_url: instanceUrl || null,
+        credentials: {
+          apiKey: apiKey || null,
+          accessKey: accessKey || null,
+          instanceUrl: instanceUrl || null
+        },
+        status: 'connected',
+        last_connected_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (connError) throw connError;
+
+    // Create connector_objects records
+    const objectsToCreate = objects || [];
+    if (objectsToCreate.length > 0) {
+      const { error: objError } = await req.supabase
+        .from('connector_objects')
+        .insert(
+          objectsToCreate.map(obj => (
+            typeof obj === 'string' ? 
+              { connection_id: connection.id, object_type: obj, sync_enabled: true } :
+              { connection_id: connection.id, object_type: obj.id, sync_enabled: true }
+          ))
+        );
+      if (objError) throw objError;
+    }
+
+    res.status(201).json({ data: connection, message: 'Connection created successfully' });
+  } catch (err) {
+    console.error('API Key auth error:', err);
+    res.status(400).json({ error: err.message });
+  }
+});
+
 
 // ============================================
 // OAUTH REDIRECT HANDLERS (unauthenticated)
@@ -201,6 +255,7 @@ app.get('/auth/salesforce', (req, res) => {
   const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
   const backendUrl = process.env.BACKEND_URL || dynamicHost;
   const redirectUri = `${backendUrl}/callback/salesforce`;
+  const clientId = process.env.SALESFORCE_CLIENT_ID;
   
   if (!clientId) {
     return res.status(400).json({ error: 'Salesforce OAuth not configured' });
@@ -255,6 +310,7 @@ app.get('/auth/hubspot', (req, res) => {
   const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
   const backendUrl = process.env.BACKEND_URL || dynamicHost;
   const redirectUri = `${backendUrl}/callback/hubspot`;
+  const clientId = process.env.HUBSPOT_CLIENT_ID;
   
   if (!clientId) {
     return res.status(400).json({ error: 'HubSpot OAuth not configured' });
@@ -307,6 +363,7 @@ app.get('/auth/outreach', (req, res) => {
   const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
   const backendUrl = process.env.BACKEND_URL || dynamicHost;
   const redirectUri = `${backendUrl}/callback/outreach`;
+  const clientId = process.env.OUTREACH_CLIENT_ID;
   
   if (!clientId) {
     return res.status(400).json({ error: 'Outreach OAuth not configured' });

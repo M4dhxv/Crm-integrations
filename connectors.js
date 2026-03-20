@@ -189,7 +189,7 @@ function openPanel(providerId) {
             ${activeProvider.id === 'gong' ? `
               <div class="form-group mt-sm">
                 <label class="form-label">Access Key</label>
-                <input type="text" class="form-input" placeholder="Enter Gong access key">
+                <input type="password" class="form-input" id="cfg-accesskey" placeholder="Enter Gong access key">
               </div>
             `: ''}
             <button class="btn btn-secondary btn-block mt-sm" id="btn-test-auth">Verify Credentials</button>
@@ -307,17 +307,85 @@ function handleSave() {
     btn.innerHTML = '<span class="spinner spinner-sm"></span> Saving...';
     btn.disabled = true;
 
-    // In a real app we'd INSERT into data_source_connections + connector_objects
+    saveConnection()
+        .then(() => {
+            window.showToast(`${activeProvider.name} connection saved and scheduled for sync!`);
+            closePanel();
 
-    setTimeout(() => {
-        window.showToast(`${activeProvider.name} connection saved and scheduled for sync!`);
-        closePanel();
+            // Auto-redirect to dashboard to see new connection
+            setTimeout(() => {
+                window.location.href = '/dashboard.html';
+            }, 1500);
+        })
+        .catch(err => {
+            btn.innerHTML = 'Save Connection';
+            btn.disabled = false;
+            window.showToast(err.message || 'Failed to save connection', 'danger');
+        });
+}
 
-        // Auto-redirect to dashboard to see new connection
-        setTimeout(() => {
-            window.location.href = '/dashboard.html';
-        }, 1500);
-    }, 1000);
+async function saveConnection() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Not logged in');
+
+    const token = session.access_token;
+
+    // Collect form data
+    const displayName = document.querySelector('.panel-title')?.textContent || activeProvider.name;
+    const syncFrequency = document.getElementById('cfg-freq')?.value || 'hourly';
+    
+    // Collect selected objects
+    const selectedObjects = [];
+    document.querySelectorAll('.obj-toggle:checked').forEach(checkbox => {
+        selectedObjects.push(checkbox.dataset.objId);
+    });
+
+    let payload = {
+        provider: activeProvider.id,
+        displayName: displayName,
+        syncFrequency: syncFrequency,
+        objects: selectedObjects
+    };
+
+    // Handle API key auth (Gong, Pipedrive, Freshsales)
+    if (activeProvider.auth === 'api_key') {
+        const apiKey = document.getElementById('cfg-apikey')?.value;
+        const accessKey = document.getElementById('cfg-accesskey')?.value;
+        const instanceUrl = document.getElementById('cfg-instanceUrl')?.value;
+
+        if (!apiKey && !accessKey) {
+            throw new Error('API key is required');
+        }
+
+        payload.apiKey = apiKey;
+        payload.accessKey = accessKey;
+        payload.instanceUrl = instanceUrl;
+
+        const res = await fetch(`${API_URL}/api/connections/auth-key`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.error || 'Failed to save connection');
+        }
+
+        return res.json();
+    }
+
+    // For OAuth providers, just create pending connection
+    if (activeProvider.auth === 'oauth2') {
+        // For now, the OAuth flow handles this via start-oauth endpoint
+        // This is a placeholder for consistency
+        return { success: true };
+    }
+
+    throw new Error('Unknown auth type');
 }
 
 // Global toast helper
