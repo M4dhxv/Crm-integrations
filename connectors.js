@@ -118,7 +118,7 @@ async function renderGrid() {
     if (connectedCountEl) connectedCountEl.textContent = `${connectedCount} Connected`;
     if (availableCountEl) availableCountEl.textContent = `${availableCount} Available`;
 
-    grid.innerHTML = providerState.map(({ provider: p, isConnected, lastSync }) => `
+    grid.innerHTML = providerState.map(({ provider: p, connection, isConnected, lastSync }) => `
       <article class="provider-card ds-card" data-id="${p.id}">
         <div class="ds-accent ${p.bg}"></div>
         <div class="ds-card-body">
@@ -137,8 +137,8 @@ async function renderGrid() {
           <div class="ds-actions ${isConnected ? 'connected' : 'available'}">
             ${isConnected
                 ? `
-                  <button class="ds-action-btn ds-secondary" data-action="sync" data-provider="${p.id}">Sync Now</button>
-                  <button class="ds-action-btn ds-link" data-action="disconnect" data-provider="${p.id}">Disconnect</button>
+                  <button class="ds-action-btn ds-secondary" data-action="sync" data-provider="${p.id}" data-connection-id="${connection?.id || ''}">Sync Now</button>
+                  <button class="ds-action-btn ds-link" data-action="disconnect" data-provider="${p.id}" data-connection-id="${connection?.id || ''}">Disconnect</button>
                   <span class="ds-last-sync">Last sync: ${formatDate(lastSync)}</span>
                 `
                 : `<button class="ds-action-btn ds-primary ${p.id}" data-action="open-panel" data-provider="${p.id}">Connect ${p.name}</button>`
@@ -153,17 +153,94 @@ async function renderGrid() {
     });
 
     grid.querySelectorAll('[data-action="sync"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            window.showToast('Sync job queued. Refresh dashboard in a few seconds.', 'success');
-        });
+      btn.addEventListener('click', async () => {
+        await triggerSync(btn.dataset.connectionId, btn);
+      });
     });
 
     grid.querySelectorAll('[data-action="disconnect"]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            window.showToast('Disconnect flow can be managed from connection settings.', 'danger');
-        });
+      btn.addEventListener('click', async () => {
+        await disconnectConnection(btn.dataset.connectionId, btn.dataset.provider, btn);
+      });
     });
 }
+
+  async function getAuthToken() {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Not logged in');
+    return session.access_token;
+  }
+
+  async function triggerSync(connectionId, buttonEl) {
+    if (!connectionId) {
+      window.showToast('Missing connection id for sync.', 'danger');
+      return;
+    }
+
+    const original = buttonEl?.innerHTML;
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.innerHTML = '<span class="spinner spinner-sm"></span> Queuing...';
+    }
+
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_URL}/api/connections/${connectionId}/sync`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const data = await parseApiJsonSafe(res);
+      if (!res.ok) throw new Error(data.error || 'Failed to queue sync');
+
+      window.showToast(data.message || 'Sync queued successfully.', 'success');
+      await renderGrid();
+    } catch (error) {
+      window.showToast(error.message || 'Failed to queue sync', 'danger');
+    } finally {
+      if (buttonEl) {
+        buttonEl.disabled = false;
+        buttonEl.innerHTML = original || 'Sync Now';
+      }
+    }
+  }
+
+  async function disconnectConnection(connectionId, providerId, buttonEl) {
+    if (!connectionId) {
+      window.showToast('Missing connection id for disconnect.', 'danger');
+      return;
+    }
+
+    const confirmed = window.confirm(`Disconnect ${providerId}?`);
+    if (!confirmed) return;
+
+    const original = buttonEl?.innerHTML;
+    if (buttonEl) {
+      buttonEl.disabled = true;
+      buttonEl.innerHTML = '<span class="spinner spinner-sm"></span> Disconnecting...';
+    }
+
+    try {
+      const token = await getAuthToken();
+      const res = await fetch(`${API_URL}/api/connections/${connectionId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const data = await parseApiJsonSafe(res);
+      if (!res.ok) throw new Error(data.error || 'Failed to disconnect');
+
+      window.showToast('Connection disconnected.', 'success');
+      await renderGrid();
+    } catch (error) {
+      window.showToast(error.message || 'Failed to disconnect connection', 'danger');
+    } finally {
+      if (buttonEl) {
+        buttonEl.disabled = false;
+        buttonEl.innerHTML = original || 'Disconnect';
+      }
+    }
+  }
 
 function formatDate(value) {
     if (!value) return '—';

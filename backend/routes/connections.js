@@ -151,11 +151,33 @@ router.post('/:id/sync', async (req, res, next) => {
     }
 
     // Get enabled objects
-    const { data: objects } = await req.supabase
+    let { data: objects } = await req.supabase
       .from('connector_objects')
       .select('object_type')
       .eq('connection_id', id)
       .eq('sync_enabled', true);
+
+    // If no connector objects exist, bootstrap from registry defaults
+    if (!objects || objects.length === 0) {
+      const { data: registry } = await req.supabase
+        .from('connector_registry')
+        .select('supported_objects')
+        .eq('provider', conn.provider)
+        .single();
+
+      const fallbackObjects = registry?.supported_objects || [];
+      if (fallbackObjects.length > 0) {
+        const rows = fallbackObjects.map(objectType => ({
+          connection_id: id,
+          provider: conn.provider,
+          object_type: objectType,
+          sync_enabled: true,
+        }));
+
+        await req.supabase.from('connector_objects').insert(rows);
+        objects = rows.map(r => ({ object_type: r.object_type }));
+      }
+    }
 
     // Create sync jobs for each object
     const jobs = (objects || []).map(obj => ({
@@ -172,7 +194,13 @@ router.post('/:id/sync', async (req, res, next) => {
         .insert(jobs)
         .select();
 
-      if (jobError) throw jobError;
+      if (jobError) {
+        // If jobs are already queued/running (partial unique index), return helpful message
+        if (jobError.code === '23505') {
+          return res.json({ data: [], message: 'Sync already queued or running for one or more objects' });
+        }
+        throw jobError;
+      }
 
       res.json({ data: createdJobs, message: `${jobs.length} sync jobs queued` });
     } else {

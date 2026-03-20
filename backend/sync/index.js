@@ -52,31 +52,41 @@ export async function processSyncJob(job, supabase) {
     if (records.length > 0) {
       const rawInserts = records.map(record => ({
         connection_id,
-        user_id: connection.user_id,
         provider,
         object_type,
         external_id: adapter.getExternalId(record),
         payload: record,
       }));
 
-      // Because source_objects is huge, we chunk upserts
+      // Because source_objects can be large, insert in chunks
       const CHUNK_SIZE = 500;
       for (let i = 0; i < rawInserts.length; i += CHUNK_SIZE) {
         const chunk = rawInserts.slice(i, i + CHUNK_SIZE);
-        const { error: upsertError } = await supabase
+        const { error: insertError } = await supabase
           .from('raw.source_objects')
-          .upsert(chunk, { onConflict: 'connection_id,provider,object_type,external_id' });
+          .insert(chunk);
         
-        if (upsertError) throw upsertError;
+        if (insertError) throw insertError;
       }
     }
+
+    // 5.5 Update connector object sync stats
+    await supabase
+      .from('connector_objects')
+      .update({
+        last_synced_at: new Date().toISOString(),
+        records_synced: (job.records_fetched || 0) + records.length,
+      })
+      .eq('connection_id', connection_id)
+      .eq('object_type', object_type);
 
     // 6. Mark job completed
     await supabase
       .from('sync_jobs')
       .update({
         status: 'completed',
-        records_processed: records.length,
+        records_fetched: records.length,
+        records_upserted: records.length,
         completed_at: new Date().toISOString(),
       })
       .eq('id', id);
@@ -97,7 +107,7 @@ export async function processSyncJob(job, supabase) {
       .from('sync_jobs')
       .update({
         status: 'failed',
-        error_message: error.message,
+        error: error.message,
         completed_at: new Date().toISOString()
       })
       .eq('id', id);
