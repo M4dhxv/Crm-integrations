@@ -31,6 +31,14 @@ export async function fetchData(objectType, credentials) {
 
   const accessToken = credentials?.access_token || credentials?.accessToken;
   const properties = HS_PROPERTIES[hsObject] || '';
+
+  // Demo mode: allows proving connect->sync UX without external API dependency.
+  // Enable by setting HUBSPOT_DEMO_SYNC=true and using token value: demo or demo_*
+  const demoEnabled = String(process.env.HUBSPOT_DEMO_SYNC || '').toLowerCase() === 'true';
+  const demoToken = typeof accessToken === 'string' && (accessToken === 'demo' || accessToken.startsWith('demo_'));
+  if (demoEnabled && demoToken) {
+    return getDemoRecords(objectType);
+  }
   
   if (!accessToken) {
     throw createIntegrationError('Missing HubSpot access_token', { status: 401, retryable: false });
@@ -118,6 +126,75 @@ export async function fetchData(objectType, credentials) {
       details,
     });
   }
+}
+
+function getDemoRecords(objectType) {
+  const now = new Date().toISOString();
+
+  if (objectType === 'contacts') {
+    return [
+      {
+        id: 'demo-hs-contact-1',
+        properties: {
+          firstname: { value: 'Ava' },
+          lastname: { value: 'Sharma' },
+          email: { value: 'ava.demo@acme.com' },
+          phone: { value: '+14155550101' },
+          jobtitle: { value: 'Sales Manager' },
+          company: { value: 'Acme Inc' },
+          lifecyclestage: { value: 'lead' },
+          synced_at: { value: now },
+        }
+      },
+      {
+        id: 'demo-hs-contact-2',
+        properties: {
+          firstname: { value: 'Noah' },
+          lastname: { value: 'Patel' },
+          email: { value: 'noah.demo@acme.com' },
+          phone: { value: '+14155550102' },
+          jobtitle: { value: 'RevOps Analyst' },
+          company: { value: 'Acme Inc' },
+          lifecyclestage: { value: 'opportunity' },
+          synced_at: { value: now },
+        }
+      },
+    ];
+  }
+
+  if (objectType === 'companies') {
+    return [
+      {
+        id: 'demo-hs-company-1',
+        properties: {
+          name: { value: 'Acme Inc' },
+          domain: { value: 'acme.com' },
+          industry: { value: 'Software' },
+          phone: { value: '+14155550100' },
+          website: { value: 'https://acme.com' },
+          synced_at: { value: now },
+        }
+      }
+    ];
+  }
+
+  if (objectType === 'deals') {
+    return [
+      {
+        id: 'demo-hs-deal-1',
+        properties: {
+          dealname: { value: 'Acme Expansion 2026' },
+          amount: { value: '25000' },
+          dealstage: { value: 'proposal' },
+          closedate: { value: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() },
+          pipeline: { value: 'default' },
+          synced_at: { value: now },
+        }
+      }
+    ];
+  }
+
+  return [];
 }
 
 async function refreshAccessToken(credentials) {

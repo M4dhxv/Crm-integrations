@@ -59,6 +59,13 @@ Optional tuning:
 - `CRON_SYNC_JOB_TIMEOUT_MS=90000`
 - `CRON_SYNC_DB_RETRIES=3`
 
+Demo mode (for quick product demo):
+
+- `HUBSPOT_DEMO_SYNC=true`
+
+Then in Connectors, paste access token as `demo` (or `demo_anything`) and click Sync.
+This will create synthetic contacts/companies/deals and prove connect->sync flow without live HubSpot API.
+
 ---
 
 ## 4) Configure Railway schedule
