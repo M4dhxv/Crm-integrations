@@ -8,6 +8,11 @@ import { processSyncJob } from '../sync/index.js';
 
 const router = Router();
 
+const PROVIDER_SUPPORTED_OBJECTS = {
+  hubspot: new Set(['contacts', 'companies', 'deals']),
+  salesforce: new Set(['contacts', 'leads', 'accounts', 'opportunities']),
+};
+
 // GET /api/connections — list user's connections with health status
 router.get('/', async (req, res, next) => {
   try {
@@ -199,7 +204,9 @@ router.post('/:id/sync', async (req, res, next) => {
     }
 
     // Create sync jobs for each object
-    const jobs = (objects || []).map(obj => ({
+    const supported = PROVIDER_SUPPORTED_OBJECTS[conn.provider];
+    const enabledObjects = (objects || []).filter(obj => !supported || supported.has(obj.object_type));
+    const jobs = enabledObjects.map(obj => ({
       connection_id: id,
       provider: conn.provider,
       object_type: obj.object_type,
@@ -221,13 +228,14 @@ router.post('/:id/sync', async (req, res, next) => {
         throw jobError;
       }
 
-      // On serverless plans with limited cron jobs, opportunistically process 1 job now.
+      // On serverless plans with limited cron jobs, opportunistically process a small batch now.
       let processedNow = 0;
       try {
         if (createdJobs?.length && req.supabaseAdmin) {
-          const jobToRun = createdJobs[0];
-          const ok = await processSyncJob(jobToRun, req.supabaseAdmin);
-          processedNow = ok ? 1 : 0;
+          for (const jobToRun of createdJobs.slice(0, 2)) {
+            const ok = await processSyncJob(jobToRun, req.supabaseAdmin);
+            if (ok) processedNow += 1;
+          }
         }
       } catch (e) {
         // Non-blocking: jobs remain queued even if immediate processing fails.

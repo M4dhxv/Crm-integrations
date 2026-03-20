@@ -307,11 +307,12 @@ function getBearerToken(authHeader = '') {
 
 async function processPendingSyncJobsOnce(supabaseClient, limit = 5) {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const nowIso = new Date().toISOString();
 
   const { data: jobs, error } = await supabaseClient
     .from('sync_jobs')
     .select('*')
-    .or(`status.eq.pending,and(status.eq.running,started_at.lt.${oneHourAgo})`)
+    .or(`and(status.eq.pending,scheduled_at.lte.${nowIso}),and(status.eq.running,started_at.lt.${oneHourAgo})`)
     .order('created_at', { ascending: true })
     .limit(limit);
 

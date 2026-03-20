@@ -3,11 +3,19 @@
  */
 import axios from 'axios';
 
+const HUBSPOT_API_BASE = 'https://api.hubapi.com';
+const REQUEST_TIMEOUT_MS = 20_000;
+const MAX_RETRIES = 3;
+const RETRY_BASE_MS = 800;
+const MAX_PAGES = 20;
+
 const HS_OBJECTS = {
   'contacts': 'contacts',
   'companies': 'companies',
   'deals': 'deals'
 };
+
+const SUPPORTED_OBJECTS = new Set(Object.keys(HS_OBJECTS));
 
 const HS_PROPERTIES = {
   'contacts': 'firstname,lastname,email,phone,jobtitle,company,lifecyclestage',
@@ -16,38 +24,79 @@ const HS_PROPERTIES = {
 };
 
 export async function fetchData(objectType, credentials) {
-  const { access_token } = credentials;
-  const hsObject = HS_OBJECTS[objectType] || objectType;
-  const properties = HS_PROPERTIES[hsObject] || '';
-  
-  if (!access_token) {
-    throw new Error('Missing HubSpot access_token');
+  const hsObject = HS_OBJECTS[objectType];
+  if (!SUPPORTED_OBJECTS.has(objectType) || !hsObject) {
+    throw createIntegrationError(`Unsupported HubSpot object type: ${objectType}`, { status: 400, retryable: false });
   }
 
-  // We use the v3 Search API to get all records for an object type
-  // In a real production app we'd paginate using 'after', but for demo limit to 100
-  const searchUrl = `https://api.hubapi.com/crm/v3/objects/${hsObject}/search`;
+  const accessToken = credentials?.access_token || credentials?.accessToken;
+  const properties = HS_PROPERTIES[hsObject] || '';
+  
+  if (!accessToken) {
+    throw createIntegrationError('Missing HubSpot access_token', { status: 401, retryable: false });
+  }
+
+  const searchUrl = `${HUBSPOT_API_BASE}/crm/v3/objects/${hsObject}/search`;
   
   try {
-    const response = await axios.post(searchUrl, {
-      limit: 100,
-      properties: properties.split(',')
-    }, {
-      headers: {
-        Authorization: `Bearer ${access_token}`,
-        'Content-Type': 'application/json'
-      }
-    });
+    let token = accessToken;
+    let allResults = [];
+    let after = undefined;
+    let page = 0;
 
-    // For HubSpot, the payload is the full object. We adjust our extractor for standardizer.
-    // The standardizer expects the hubspot nested format OR we can flat it here.
-    // Our normalizer (field-maps) looks config.path = 'properties.firstname.value'
-    // BUT the v3 API returns { id: '123', properties: { firstname: 'John' } } (not .value).
-    // So let's transform the v3 response slightly so our existing field-maps work seamlessly:
-    
-    return (response.data.results || []).map(record => {
-      // Convert { properties: { email: "a@b.com" }} 
-      // to { properties: { email: { value: "a@b.com" } } } to match the HubSpot v1 map structure
+    while (page < MAX_PAGES) {
+      page += 1;
+      const body = {
+        limit: 100,
+        properties: properties.split(',').filter(Boolean),
+        ...(after ? { after } : {})
+      };
+
+      const response = await withRetry(async () => {
+        try {
+          return await axios.post(searchUrl, body, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: REQUEST_TIMEOUT_MS,
+          });
+        } catch (error) {
+          const status = error?.response?.status;
+
+          // Attempt single refresh on invalid token
+          if (status === 401) {
+            const refreshed = await refreshAccessToken(credentials);
+            if (refreshed) {
+              token = refreshed;
+              return axios.post(searchUrl, body, {
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                },
+                timeout: REQUEST_TIMEOUT_MS,
+              });
+            }
+          }
+
+          throw error;
+        }
+      });
+
+      const results = response?.data?.results || [];
+      allResults = allResults.concat(results);
+
+      const nextAfter = response?.data?.paging?.next?.after;
+      if (!nextAfter) break;
+      after = nextAfter;
+    }
+
+    // mutate credentials so caller can persist refreshed token
+    if (token && token !== accessToken) {
+      credentials.access_token = token;
+    }
+
+    return allResults.map(record => {
       const mappedRecord = { id: record.id, properties: {} };
       if (record.properties) {
         for (const [k, v] of Object.entries(record.properties)) {
@@ -58,9 +107,78 @@ export async function fetchData(objectType, credentials) {
     });
 
   } catch (error) {
-    console.error('HubSpot API Error:', error.response?.data || error.message);
-    throw new Error(`Failed to fetch ${objectType} from HubSpot: ${error.message}`);
+    const status = error?.response?.status;
+    const details = error?.response?.data || error.message;
+    console.error('HubSpot API Error:', details);
+
+    const message = `Failed to fetch ${objectType} from HubSpot: ${error.message}`;
+    throw createIntegrationError(message, {
+      status,
+      retryable: isRetryableStatus(status) || error?.code === 'ECONNABORTED' || /timeout|fetch failed/i.test(String(error?.message || '')),
+      details,
+    });
   }
+}
+
+async function refreshAccessToken(credentials) {
+  const refreshToken = credentials?.refresh_token || credentials?.refreshToken;
+  const clientId = process.env.HUBSPOT_CLIENT_ID;
+  const clientSecret = process.env.HUBSPOT_CLIENT_SECRET;
+
+  if (!refreshToken || !clientId || !clientSecret) return null;
+
+  const payload = new URLSearchParams({
+    grant_type: 'refresh_token',
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
+  }).toString();
+
+  const response = await axios.post(`${HUBSPOT_API_BASE}/oauth/v1/token`, payload, {
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    timeout: REQUEST_TIMEOUT_MS,
+  });
+
+  const newAccessToken = response?.data?.access_token;
+  if (!newAccessToken) return null;
+  return newAccessToken;
+}
+
+function isRetryableStatus(status) {
+  if (!status) return true;
+  return status === 429 || status >= 500;
+}
+
+async function withRetry(fn) {
+  let attempt = 0;
+  while (attempt < MAX_RETRIES) {
+    attempt += 1;
+    try {
+      return await fn();
+    } catch (error) {
+      const status = error?.response?.status;
+      const retryable = isRetryableStatus(status) || error?.code === 'ECONNABORTED';
+      if (!retryable || attempt >= MAX_RETRIES) throw error;
+
+      const retryAfterHeader = Number(error?.response?.headers?.['retry-after'] || 0);
+      const retryDelay = retryAfterHeader > 0
+        ? retryAfterHeader * 1000
+        : RETRY_BASE_MS * Math.pow(2, attempt - 1) + Math.floor(Math.random() * 300);
+      await sleep(retryDelay);
+    }
+  }
+}
+
+function createIntegrationError(message, meta = {}) {
+  const err = new Error(message);
+  err.status = meta.status;
+  err.retryable = Boolean(meta.retryable);
+  err.details = meta.details;
+  return err;
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 export function getExternalId(record) {

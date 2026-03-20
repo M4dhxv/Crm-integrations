@@ -32,13 +32,14 @@ async function pollJobs() {
   isRunning = true;
 
   try {
-    // Look for pending jobs, or jobs stuck in 'running' for > 1 hour
+    // Look for pending jobs ready to run, or jobs stuck in 'running' for > 1 hour
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const nowIso = new Date().toISOString();
     
     const { data: jobs, error } = await supabase
       .from('sync_jobs')
       .select('*')
-      .or(`status.eq.pending,and(status.eq.running,started_at.lt.${oneHourAgo})`)
+      .or(`and(status.eq.pending,scheduled_at.lte.${nowIso}),and(status.eq.running,started_at.lt.${oneHourAgo})`)
       .order('created_at', { ascending: true })
       .limit(5);
 

@@ -21,11 +21,21 @@ const ADAPTERS = {
  */
 export async function processSyncJob(job, supabase) {
   const { id, connection_id, provider, object_type, job_type } = job;
+  const startedAt = Date.now();
+  const currentAttempt = (job.attempts || 0) + 1;
+  const maxAttempts = job.max_attempts || 3;
   console.log(`[Sync] Starting job ${id} | ${provider} -> ${object_type}`);
 
   try {
     // 1. Mark job as running
-    await supabase.from('sync_jobs').update({ status: 'running', started_at: new Date().toISOString() }).eq('id', id);
+    await supabase
+      .from('sync_jobs')
+      .update({
+        status: 'running',
+        started_at: new Date().toISOString(),
+        attempts: currentAttempt,
+      })
+      .eq('id', id);
 
     // 2. Fetch connection details/credentials
     const { data: connection, error: connError } = await supabase
@@ -47,6 +57,12 @@ export async function processSyncJob(job, supabase) {
     // 4. Fetch raw data from CRM API
     const records = await adapter.fetchData(object_type, connection.credentials, connection.instance_url);
     console.log(`[Sync] Job ${id} | Pulled ${records.length} records from ${provider}`);
+
+    // Persist refreshed credentials (if adapter updated token)
+    await supabase
+      .from('data_source_connections')
+      .update({ credentials: connection.credentials || {} })
+      .eq('id', connection_id);
 
     // 5. Upsert into raw.source_objects
     if (records.length > 0) {
@@ -88,6 +104,7 @@ export async function processSyncJob(job, supabase) {
         records_fetched: records.length,
         records_upserted: records.length,
         completed_at: new Date().toISOString(),
+        error: null,
       })
       .eq('id', id);
 
@@ -96,21 +113,37 @@ export async function processSyncJob(job, supabase) {
     console.log(`[Sync] Job ${id} | Triggering Normalization for ${provider}...`);
     await runNormalizationPipeline(supabase, connection_id, provider, { userId: connection.user_id });
 
-    console.log(`[Sync] Job ${id} | Done.`);
+    console.log(`[Sync] Job ${id} | Done in ${Date.now() - startedAt}ms.`);
     return true;
 
   } catch (error) {
     console.error(`[Sync] Job ${id} | FAILED:`, error.message);
+
+    const retryable = error?.retryable === true;
+    const canRetry = retryable && currentAttempt < maxAttempts;
+    const nextRunAt = new Date(Date.now() + Math.min(60_000 * Math.pow(2, currentAttempt - 1), 10 * 60_000)).toISOString();
     
-    // Mark failed
-    await supabase
-      .from('sync_jobs')
-      .update({
-        status: 'failed',
-        error: error.message,
-        completed_at: new Date().toISOString()
-      })
-      .eq('id', id);
+    // Mark failed or requeue with backoff
+    if (canRetry) {
+      await supabase
+        .from('sync_jobs')
+        .update({
+          status: 'pending',
+          error: error.message,
+          scheduled_at: nextRunAt,
+        })
+        .eq('id', id);
+      console.warn(`[Sync] Job ${id} scheduled for retry at ${nextRunAt} (attempt ${currentAttempt}/${maxAttempts})`);
+    } else {
+      await supabase
+        .from('sync_jobs')
+        .update({
+          status: 'failed',
+          error: error.message,
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', id);
+    }
 
     return false;
   }
