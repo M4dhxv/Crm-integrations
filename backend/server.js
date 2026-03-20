@@ -164,7 +164,8 @@ app.post('/api/start-oauth', authMiddleware, async (req, res) => {
   }
 
   // DEMO MODE BYPASS: If no backend URL is set, we bypass real OAuth and simulate connection
-  const backendUrl = process.env.BACKEND_URL;
+  const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+  const backendUrl = process.env.BACKEND_URL || dynamicHost;
   if (!backendUrl) {
     console.log(`[Demo Mode] Mocking ${provider} connection for user ${req.userId}...`);
     
@@ -182,7 +183,7 @@ app.post('/api/start-oauth', authMiddleware, async (req, res) => {
     }, { onConflict: 'user_id,provider' });
 
     // Mock successful redirect directly back to frontend
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+    const frontendUrl = process.env.FRONTEND_URL || dynamicHost;
     return res.json({ redirectUrl: `${frontendUrl}/dashboard.html?status=success&provider=${provider}` });
   }
 
@@ -197,8 +198,9 @@ app.post('/api/start-oauth', authMiddleware, async (req, res) => {
 // Salesforce OAuth
 app.get('/auth/salesforce', (req, res) => {
   const { userId } = req.query;
-  const clientId = process.env.SALESFORCE_CLIENT_ID;
-  const redirectUri = `${process.env.BACKEND_URL}/callback/salesforce`;
+  const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+  const backendUrl = process.env.BACKEND_URL || dynamicHost;
+  const redirectUri = `${backendUrl}/callback/salesforce`;
   
   if (!clientId) {
     return res.status(400).json({ error: 'Salesforce OAuth not configured' });
@@ -212,12 +214,15 @@ app.get('/callback/salesforce', async (req, res) => {
   const { code, state } = req.query;
   
   try {
+    const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+    const backendUrl = process.env.BACKEND_URL || dynamicHost;
+    
     const tokenRes = await axios.post('https://login.salesforce.com/services/oauth2/token', null, {
       params: {
         grant_type: 'authorization_code',
         client_id: process.env.SALESFORCE_CLIENT_ID,
         client_secret: process.env.SALESFORCE_CLIENT_SECRET,
-        redirect_uri: `${process.env.BACKEND_URL}/callback/salesforce`,
+        redirect_uri: `${backendUrl}/callback/salesforce`,
         code
       }
     });
@@ -235,18 +240,21 @@ app.get('/callback/salesforce', async (req, res) => {
       .eq('provider', 'salesforce');
 
     console.log(`[${new Date().toISOString()}] INFO OAuth completed for salesforce (user: ${state})`);
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard.html?status=success&provider=salesforce`);
+    const frontendUrl = process.env.FRONTEND_URL || dynamicHost;
+    res.redirect(`${frontendUrl}/dashboard.html?status=success&provider=salesforce`);
   } catch (err) {
     console.error(`[${new Date().toISOString()}] ERROR Salesforce OAuth:`, err.message);
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard.html?status=error&provider=salesforce`);
+    const frontendUrl = process.env.FRONTEND_URL || dynamicHost || 'http://localhost:5173';
+    res.redirect(`${frontendUrl}/dashboard.html?status=error&provider=salesforce`);
   }
 });
 
 // HubSpot OAuth
 app.get('/auth/hubspot', (req, res) => {
   const { userId } = req.query;
-  const clientId = process.env.HUBSPOT_CLIENT_ID;
-  const redirectUri = `${process.env.BACKEND_URL}/callback/hubspot`;
+  const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+  const backendUrl = process.env.BACKEND_URL || dynamicHost;
+  const redirectUri = `${backendUrl}/callback/hubspot`;
   
   if (!clientId) {
     return res.status(400).json({ error: 'HubSpot OAuth not configured' });
@@ -260,11 +268,14 @@ app.get('/callback/hubspot', async (req, res) => {
   const { code, state } = req.query;
   
   try {
+    const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+    const backendUrl = process.env.BACKEND_URL || dynamicHost;
+
     const tokenRes = await axios.post('https://api.hubapi.com/oauth/v1/token', {
       grant_type: 'authorization_code',
       client_id: process.env.HUBSPOT_CLIENT_ID,
       client_secret: process.env.HUBSPOT_CLIENT_SECRET,
-      redirect_uri: `${process.env.BACKEND_URL}/callback/hubspot`,
+      redirect_uri: `${backendUrl}/callback/hubspot`,
       code
     });
 
@@ -281,18 +292,21 @@ app.get('/callback/hubspot', async (req, res) => {
       .eq('provider', 'hubspot');
 
     console.log(`[${new Date().toISOString()}] INFO OAuth completed for hubspot (user: ${state})`);
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard.html?status=success&provider=hubspot`);
+    const frontendUrl = process.env.FRONTEND_URL || dynamicHost;
+    res.redirect(`${frontendUrl}/dashboard.html?status=success&provider=hubspot`);
   } catch (err) {
     console.error(`[${new Date().toISOString()}] ERROR HubSpot OAuth:`, err.message);
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard.html?status=error&provider=hubspot`);
+    const frontendUrl = process.env.FRONTEND_URL || dynamicHost || 'http://localhost:5173';
+    res.redirect(`${frontendUrl}/dashboard.html?status=error&provider=hubspot`);
   }
 });
 
 // Outreach OAuth
 app.get('/auth/outreach', (req, res) => {
   const { userId } = req.query;
-  const clientId = process.env.OUTREACH_CLIENT_ID;
-  const redirectUri = `${process.env.BACKEND_URL}/callback/outreach`;
+  const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+  const backendUrl = process.env.BACKEND_URL || dynamicHost;
+  const redirectUri = `${backendUrl}/callback/outreach`;
   
   if (!clientId) {
     return res.status(400).json({ error: 'Outreach OAuth not configured' });
@@ -306,11 +320,14 @@ app.get('/callback/outreach', async (req, res) => {
   const { code, state } = req.query;
   
   try {
+    const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+    const backendUrl = process.env.BACKEND_URL || dynamicHost;
+
     const tokenRes = await axios.post('https://api.outreach.io/oauth/token', {
       grant_type: 'authorization_code',
       client_id: process.env.OUTREACH_CLIENT_ID,
       client_secret: process.env.OUTREACH_CLIENT_SECRET,
-      redirect_uri: `${process.env.BACKEND_URL}/callback/outreach`,
+      redirect_uri: `${backendUrl}/callback/outreach`,
       code
     });
 
@@ -327,10 +344,12 @@ app.get('/callback/outreach', async (req, res) => {
       .eq('provider', 'outreach');
 
     console.log(`[${new Date().toISOString()}] INFO OAuth completed for outreach (user: ${state})`);
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard.html?status=success&provider=outreach`);
+    const frontendUrl = process.env.FRONTEND_URL || dynamicHost;
+    res.redirect(`${frontendUrl}/dashboard.html?status=success&provider=outreach`);
   } catch (err) {
     console.error(`[${new Date().toISOString()}] ERROR Outreach OAuth:`, err.message);
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard.html?status=error&provider=outreach`);
+    const frontendUrl = process.env.FRONTEND_URL || dynamicHost || 'http://localhost:5173';
+    res.redirect(`${frontendUrl}/dashboard.html?status=error&provider=outreach`);
   }
 });
 
