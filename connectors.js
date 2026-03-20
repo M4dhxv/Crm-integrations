@@ -255,8 +255,35 @@ function openPanel(providerId) {
 
     const oauthBtn = document.getElementById('btn-auth-flow');
     if (oauthBtn) {
-        oauthBtn.addEventListener('click', () => {
-            window.showToast(`Redirecting to ${activeProvider.name} OAuth flow...`, 'info');
+        oauthBtn.addEventListener('click', async () => {
+            oauthBtn.innerHTML = '<span class="spinner spinner-sm"></span> Redirecting...';
+            oauthBtn.disabled = true;
+
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!session) throw new Error('Not logged in');
+
+                const res = await fetch('http://localhost:3001/api/start-oauth', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session.access_token}`
+                    },
+                    body: JSON.stringify({ provider: activeProvider.id })
+                });
+
+                const data = await res.json();
+                if (data.error) throw new Error(data.error);
+
+                if (data.redirectUrl) {
+                    window.location.href = data.redirectUrl;
+                }
+            } catch (err) {
+                console.error(err);
+                oauthBtn.innerHTML = 'Connect to ' + activeProvider.name;
+                oauthBtn.disabled = false;
+                window.showToast(err.message || 'Failed to start OAuth flow', 'danger');
+            }
         });
     }
 

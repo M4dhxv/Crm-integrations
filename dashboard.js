@@ -130,6 +130,9 @@ function renderSourceList(connections) {
           <button class="btn btn-secondary btn-icon" title="Sync Now" onclick="alert('Started manual sync for ${providerInfo.name}')">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
           </button>
+          <button class="btn btn-secondary btn-icon" title="Disconnect" style="color:var(--danger);border-color:transparent" onclick="disconnectProvider('${conn.id}')">
+             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path><line x1="12" y1="2" x2="12" y2="12"></line></svg>
+          </button>
         </div>
       </div>
     `;
@@ -155,43 +158,85 @@ window.showToast = function (message, type = 'success') {
     }, 4000);
 }
 
-// ---- MOCK DATA GENERATOR ----
-// Simulates the dashboard_stats view query for UI demonstration
-async function simulateSupabaseFetch() {
-    return new Promise(resolve => {
-        setTimeout(() => {
-            resolve({
-                totalContacts: 14250,
-                totalDeals: 384,
-                avgQualityScore: 78,
-                connections: [
-                    {
-                        id: '1',
-                        provider: 'salesforce',
-                        display_name: 'Production Org',
-                        status: 'connected',
-                        sync_frequency: 'hourly',
-                        health_status: 'healthy',
-                        last_sync_at: '12 mins ago',
-                        contact_count: 8450,
-                        deal_count: 210
-                    },
-                    {
-                        id: '2',
-                        provider: 'hubspot',
-                        display_name: 'Marketing Portal',
-                        status: 'syncing',
-                        sync_frequency: 'realtime',
-                        health_status: 'healthy',
-                        last_sync_at: 'Just now',
-                        contact_count: 5800,
-                        deal_count: 174
-                    }
-                ]
-            });
-        }, 600);
-    });
+// ---- Real Data Fetching ----
+async function loadData() {
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return { stats: null, connections: [] };
+
+        const token = session.access_token;
+        const connRes = await fetch('http://localhost:3001/api/connections', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const connData = await connRes.json();
+        const connections = connData.data || [];
+
+        const statsRes = await fetch('http://localhost:3001/api/normalized/stats', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const statsData = await statsRes.json();
+
+        let totalContacts = 0;
+        let totalDeals = 0;
+        connections.forEach(c => {
+            totalContacts += (c.contact_count || 0);
+            totalDeals += (c.deal_count || 0);
+        });
+
+        return {
+            totalContacts: totalContacts,
+            totalDeals: totalDeals,
+            avgQualityScore: statsData.avgQualityScore || 0,
+            connections: connections
+        };
+    } catch (err) {
+        console.error("Error loading dashboard data", err);
+        return { totalContacts: 0, totalDeals: 0, avgQualityScore: 0, connections: [] };
+    }
 }
 
+window.disconnectProvider = async function(connId) {
+    if (!confirm('Are you sure you want to disconnect this CRM? This will not delete your synchronized data, but will stop future syncs.')) {
+        return;
+    }
+    try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        
+        const btn = event.currentTarget.querySelector('svg');
+        if (btn) btn.innerHTML = '<span class="spinner spinner-sm"></span>';
+
+        const res = await fetch(`http://localhost:3001/api/connections/${connId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${session.access_token}` }
+        });
+        
+        if (res.ok) {
+            window.showToast('Provider disconnected successfully');
+            const data = await loadData();
+            renderStats(data);
+            renderSourceList(data.connections);
+        } else {
+            throw new Error('Failed to disconnect');
+        }
+    } catch (err) {
+        window.showToast(err.message, 'danger');
+    }
+};
+
 // Start app
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', async () => {
+    // Check for success/error query params from OAuth redirect
+    const urlParams = new URLSearchParams(window.location.search);
+    const status = urlParams.get('status');
+    const provider = urlParams.get('provider');
+    if (status === 'success') {
+        setTimeout(() => window.showToast(`Successfully connected to ${provider}!`), 500);
+        window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (status === 'error') {
+        setTimeout(() => window.showToast(`Failed to connect to ${provider}.`, 'danger'), 500);
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    init();
+});
+

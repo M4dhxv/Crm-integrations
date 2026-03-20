@@ -158,7 +158,30 @@ app.post('/api/start-oauth', authMiddleware, async (req, res) => {
     return res.status(400).json({ error: 'Provider not supported for OAuth' });
   }
 
-  res.json({ redirectUrl: `${process.env.BACKEND_URL}${redirectUrls[provider]}` });
+  // DEMO MODE BYPASS: If no backend URL is set, we bypass real OAuth and simulate connection
+  const backendUrl = process.env.BACKEND_URL;
+  if (!backendUrl) {
+    console.log(`[Demo Mode] Mocking ${provider} connection for user ${req.userId}...`);
+    
+    // Create a mock connection in the database
+    await req.supabase.from('data_source_connections').upsert({
+      user_id: req.userId,
+      provider: provider,
+      display_name: `${provider} (Demo Configuration)`,
+      auth_type: 'oauth2',
+      status: 'connected',
+      health_status: 'healthy',
+      sync_frequency: 'hourly',
+      contact_count: Math.floor(Math.random() * 5000),
+      deal_count: Math.floor(Math.random() * 300)
+    }, { onConflict: 'user_id,provider' });
+
+    // Mock successful redirect directly back to frontend
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+    return res.json({ redirectUrl: `${frontendUrl}/dashboard.html?status=success&provider=${provider}` });
+  }
+
+  res.json({ redirectUrl: `${backendUrl}${redirectUrls[provider]}` });
 });
 
 
