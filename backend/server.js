@@ -162,6 +162,23 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
+// Debug endpoint to check env vars are loaded
+app.get('/api/config-status', (req, res) => {
+  res.json({
+    supabase_url: process.env.VITE_SUPABASE_URL ? '✅ loaded' : '❌ missing',
+    supabase_anon_key: process.env.VITE_SUPABASE_ANON_KEY ? '✅ loaded' : '❌ missing',
+    supabase_service_key: process.env.SUPABASE_SERVICE_KEY ? '✅ loaded' : '❌ missing',
+    salesforce_client_id: process.env.SALESFORCE_CLIENT_ID ? '✅ loaded' : '❌ missing',
+    salesforce_client_secret: process.env.SALESFORCE_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
+    hubspot_client_id: process.env.HUBSPOT_CLIENT_ID ? '✅ loaded' : '❌ missing',
+    hubspot_client_secret: process.env.HUBSPOT_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
+    outreach_client_id: process.env.OUTREACH_CLIENT_ID ? '✅ loaded' : '❌ missing',
+    outreach_client_secret: process.env.OUTREACH_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
+    backend_url: process.env.BACKEND_URL || 'auto-detect',
+    frontend_url: process.env.FRONTEND_URL || 'auto-detect',
+  });
+});
+
 
 // ============================================
 // API ROUTES (authenticated)
@@ -384,7 +401,14 @@ app.get(['/auth/salesforce', '/api/auth/salesforce'], (req, res) => {
   const clientId = process.env.SALESFORCE_CLIENT_ID;
   
   if (!clientId) {
-    return res.status(400).json({ error: 'Salesforce OAuth not configured' });
+    console.error('[Salesforce OAuth] SALESFORCE_CLIENT_ID not found in env vars');
+    console.error('[Salesforce OAuth] Available env vars:', Object.keys(process.env).filter(k => k.includes('SALESFORCE') || k.includes('salesforce')));
+    return res.status(400).json({ 
+      error: 'Salesforce OAuth not configured',
+      details: 'SALESFORCE_CLIENT_ID environment variable is missing. Check Vercel Environment Variables.',
+      hint: 'Visit /api/config-status to see which vars are loaded',
+      help: 'Read HOW_TO_ADD_ENV_VARS.md in repo'
+    });
   }
 
   const authUrl = `https://login.salesforce.com/services/oauth2/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&state=${userId}`;
