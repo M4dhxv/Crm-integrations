@@ -396,6 +396,16 @@ function handleSave() {
         });
 }
 
+    async function parseApiJsonSafe(res) {
+      const text = await res.text();
+      if (!text) return {};
+      try {
+        return JSON.parse(text);
+      } catch {
+        return { error: text };
+      }
+    }
+
 async function saveConnection() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Not logged in');
@@ -443,11 +453,11 @@ async function saveConnection() {
         });
 
         if (!res.ok) {
-            const error = await res.json();
+          const error = await parseApiJsonSafe(res);
             throw new Error(error.error || 'Failed to save connection');
         }
 
-        return res.json();
+        return parseApiJsonSafe(res);
     }
 
     // For OAuth providers: support both OAuth redirect and manual token save
@@ -473,11 +483,11 @@ async function saveConnection() {
             });
 
             if (!res.ok) {
-                const error = await res.json();
+              const error = await parseApiJsonSafe(res);
                 throw new Error(error.error || 'Failed to save OAuth token connection');
             }
 
-            return res.json();
+            return parseApiJsonSafe(res);
         }
 
         // Save pending OAuth connection (user can click OAuth button to authorize)
@@ -497,11 +507,11 @@ async function saveConnection() {
         });
 
         if (!res.ok) {
-            const error = await res.json();
+          const error = await parseApiJsonSafe(res);
             throw new Error(error.error || 'Failed to save OAuth connection');
         }
 
-        return res.json();
+        return parseApiJsonSafe(res);
     }
 
     throw new Error('Unknown auth type');

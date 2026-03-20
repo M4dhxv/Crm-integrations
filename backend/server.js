@@ -21,10 +21,18 @@ const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const oauthStateStore = new Map();
 
 // Initialize Supabase admin client (service role)
-const supabaseAdmin = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY
-);
+let supabaseAdmin = null;
+const hasSupabaseUrl = Boolean(process.env.VITE_SUPABASE_URL);
+const hasSupabaseKey = Boolean(process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY);
+
+if (hasSupabaseUrl && hasSupabaseKey) {
+  supabaseAdmin = createClient(
+    process.env.VITE_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY
+  );
+} else {
+  console.error('[Config] Missing required Supabase env vars (VITE_SUPABASE_URL and/or SUPABASE_SERVICE_KEY/VITE_SUPABASE_ANON_KEY)');
+}
 
 // ============================================
 // MIDDLEWARE
@@ -101,6 +109,16 @@ setInterval(() => {
 
 // JWT Auth middleware for /api/* routes
 async function authMiddleware(req, res, next) {
+  if (!supabaseAdmin) {
+    return res.status(500).json({
+      error: 'Server configuration error: Supabase is not configured',
+      missing: {
+        VITE_SUPABASE_URL: !process.env.VITE_SUPABASE_URL,
+        SUPABASE_SERVICE_KEY_or_VITE_SUPABASE_ANON_KEY: !(process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY),
+      }
+    });
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Missing or invalid authorization header' });
@@ -235,6 +253,20 @@ function isUuid(value) {
 // ============================================
 app.get('/health', async (req, res) => {
   const checks = { server: 'ok', supabase: 'unknown' };
+
+  if (!supabaseAdmin) {
+    checks.supabase = 'error';
+    return res.status(503).json({
+      status: 'degraded',
+      checks,
+      config: {
+        VITE_SUPABASE_URL: Boolean(process.env.VITE_SUPABASE_URL),
+        SUPABASE_SERVICE_KEY_or_VITE_SUPABASE_ANON_KEY: Boolean(process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY),
+      },
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    });
+  }
   
   try {
     const { error } = await supabaseAdmin.from('connector_registry').select('provider').limit(1);
@@ -255,6 +287,20 @@ app.get('/health', async (req, res) => {
 // Vercel-friendly health alias
 app.get('/api/health', async (req, res) => {
   const checks = { server: 'ok', supabase: 'unknown' };
+
+  if (!supabaseAdmin) {
+    checks.supabase = 'error';
+    return res.status(503).json({
+      status: 'degraded',
+      checks,
+      config: {
+        VITE_SUPABASE_URL: Boolean(process.env.VITE_SUPABASE_URL),
+        SUPABASE_SERVICE_KEY_or_VITE_SUPABASE_ANON_KEY: Boolean(process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY),
+      },
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+    });
+  }
 
   try {
     const { error } = await supabaseAdmin.from('connector_registry').select('provider').limit(1);
