@@ -20,6 +20,7 @@ const PORT = process.env.PORT || 3001;
 
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const oauthStateStore = new Map();
+const OAUTH_STATE_SECRET = process.env.OAUTH_STATE_SECRET || process.env.SUPABASE_SERVICE_KEY || 'dev-oauth-state-secret';
 
 // Initialize Supabase admin client (service role)
 let supabaseAdmin = null;
@@ -158,6 +159,30 @@ function createOAuthState(payload) {
     expiresAt: Date.now() + OAUTH_STATE_TTL_MS,
   });
   return token;
+}
+
+function createSignedState(payload) {
+  const json = JSON.stringify(payload);
+  const body = toBase64Url(Buffer.from(json));
+  const sig = toBase64Url(crypto.createHmac('sha256', OAUTH_STATE_SECRET).update(body).digest());
+  return `${body}.${sig}`;
+}
+
+function parseSignedState(token) {
+  if (!token || typeof token !== 'string' || !token.includes('.')) return null;
+  const [body, sig] = token.split('.');
+  if (!body || !sig) return null;
+
+  const expectedSig = toBase64Url(crypto.createHmac('sha256', OAUTH_STATE_SECRET).update(body).digest());
+  if (sig !== expectedSig) return null;
+
+  try {
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    if (payload?.exp && Date.now() > payload.exp) return null;
+    return payload;
+  } catch {
+    return null;
+  }
 }
 
 function getOAuthState(token) {
@@ -494,7 +519,19 @@ app.post('/api/start-oauth', authMiddleware, async (req, res) => {
     return res.json({ redirectUrl: `${frontendUrl}/dashboard.html?status=success&provider=${provider}` });
   }
 
-  const stateToken = createOAuthState({ userId: req.userId, provider });
+  let stateToken;
+  if (provider === 'hubspot') {
+    const { verifier } = createPkcePair();
+    stateToken = createSignedState({
+      userId: req.userId,
+      provider,
+      pkceVerifier: verifier,
+      exp: Date.now() + OAUTH_STATE_TTL_MS,
+    });
+  } else {
+    stateToken = createOAuthState({ userId: req.userId, provider });
+  }
+
   res.json({ redirectUrl: `${backendUrl}${redirectUrls[provider]}&state=${encodeURIComponent(stateToken)}` });
 });
 
@@ -734,13 +771,11 @@ app.get(['/auth/hubspot', '/api/auth/hubspot'], (req, res) => {
   }
 
   const oauthState = state || userId;
-  const stateEntry = getOAuthState(String(oauthState || ''));
-  const { verifier, challenge } = createPkcePair();
-
-  if (stateEntry) {
-    stateEntry.pkceVerifier = verifier;
-    oauthStateStore.set(String(oauthState), stateEntry);
-  }
+  const signedState = parseSignedState(String(oauthState || ''));
+  const verifier = signedState?.pkceVerifier;
+  const challenge = verifier
+    ? toBase64Url(crypto.createHash('sha256').update(verifier).digest())
+    : createPkcePair().challenge;
 
   const scopeQuery = hubspotScopes ? `&scope=${encodeURIComponent(hubspotScopes)}` : '';
   const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}${scopeQuery}&state=${encodeURIComponent(oauthState || '')}&code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=S256`;
@@ -754,7 +789,8 @@ app.get(['/callback/hubspot', '/api/callback/hubspot'], async (req, res) => {
   
   try {
     const backendUrl = process.env.BACKEND_URL || dynamicHost;
-    const oauthState = consumeOAuthState(String(state || ''), 'hubspot');
+    const signedState = parseSignedState(String(state || ''));
+    const oauthState = signedState || consumeOAuthState(String(state || ''), 'hubspot');
     const userId = oauthState?.userId || (isUuid(state) ? state : null);
 
     if (!userId || !code) {
