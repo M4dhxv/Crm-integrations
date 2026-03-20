@@ -279,7 +279,27 @@ async function handleManualConnectionAuth(req, res, forcedAuthType = null) {
       if (objError) throw objError;
     }
 
-    res.status(201).json({ data: connection, message: 'Connection created successfully' });
+    // Trigger immediate sync jobs for all enabled objects
+    const jobsToCreate = (objectsToCreate || []).map(obj => ({
+      connection_id: connection.id,
+      provider,
+      object_type: typeof obj === 'string' ? obj : obj.id,
+      job_type: 'incremental',
+      status: 'pending',
+    }));
+
+    if (jobsToCreate.length > 0) {
+      const { error: jobError } = await req.supabase
+        .from('sync_jobs')
+        .insert(jobsToCreate);
+      if (jobError) console.error('Error creating sync jobs:', jobError);
+    }
+
+    res.status(201).json({ 
+      data: connection, 
+      message: 'Connection created successfully and sync scheduled',
+      syncJobs: jobsToCreate.length 
+    });
   } catch (err) {
     console.error('Manual auth error:', err);
     res.status(400).json({ error: err.message });
@@ -294,6 +314,60 @@ app.post('/api/connections/auth-manual', authMiddleware, async (req, res) => {
 // Backward-compatible API key endpoint
 app.post('/api/connections/auth-key', authMiddleware, async (req, res) => {
   await handleManualConnectionAuth(req, res, 'api_key');
+});
+
+// Test data fetch endpoint - verify credentials work
+app.post('/api/connections/test-fetch', authMiddleware, async (req, res) => {
+  try {
+    const { connectionId, objectType } = req.body;
+
+    if (!connectionId || !objectType) {
+      return res.status(400).json({ error: 'connectionId and objectType required' });
+    }
+
+    // Get connection
+    const { data: connection, error: connError } = await req.supabase
+      .from('data_source_connections')
+      .select('*')
+      .eq('id', connectionId)
+      .eq('user_id', req.userId)
+      .single();
+
+    if (connError || !connection) {
+      return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    // Dynamically import adapter for provider
+    let adapter;
+    try {
+      if (connection.provider === 'salesforce') {
+        const mod = await import('./sync/adapters/salesforce.js');
+        adapter = mod;
+      } else if (connection.provider === 'hubspot') {
+        const mod = await import('./sync/adapters/hubspot.js');
+        adapter = mod;
+      } else {
+        return res.status(400).json({ error: `Provider ${connection.provider} adapter not available for testing` });
+      }
+    } catch (e) {
+      return res.status(500).json({ error: `Failed to load adapter: ${e.message}` });
+    }
+
+    // Test fetch
+    const records = await adapter.fetchData(objectType, connection.credentials, connection.instance_url);
+
+    res.json({
+      success: true,
+      provider: connection.provider,
+      objectType,
+      recordsFetched: records.length,
+      sampleRecords: records.slice(0, 3),
+      message: `Successfully fetched ${records.length} records from ${connection.provider}`
+    });
+  } catch (err) {
+    console.error('Test fetch error:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 

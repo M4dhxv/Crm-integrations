@@ -321,14 +321,18 @@ function handleSave() {
     btn.disabled = true;
 
     saveConnection()
-        .then(() => {
-            window.showToast(`${activeProvider.name} connection saved and scheduled for sync!`);
+        .then(result => {
+            const syncCount = result.syncJobs || 0;
+            window.showToast(
+                `${activeProvider.name} connected! ${syncCount} sync jobs created. Data will be fetched in the background.`,
+                'success'
+            );
             closePanel();
 
             // Auto-redirect to dashboard to see new connection
             setTimeout(() => {
                 window.location.href = '/dashboard.html';
-            }, 1500);
+            }, 2000);
         })
         .catch(err => {
             btn.innerHTML = 'Save Connection';
@@ -393,56 +397,56 @@ async function saveConnection() {
 
     // For OAuth providers: support both OAuth redirect and manual token save
     if (activeProvider.auth === 'oauth2') {
-      const accessToken = document.getElementById('cfg-access-token')?.value;
-      const refreshToken = document.getElementById('cfg-refresh-token')?.value;
-      const instanceUrl = document.getElementById('cfg-instanceUrl')?.value;
+        const accessToken = document.getElementById('cfg-access-token')?.value;
+        const refreshToken = document.getElementById('cfg-refresh-token')?.value;
+        const instanceUrl = document.getElementById('cfg-instanceUrl')?.value;
 
-      if (accessToken || refreshToken) {
-        const res = await fetch(`${API_URL}/api/connections/auth-manual`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            ...payload,
-            authType: 'oauth2',
-            accessToken,
-            refreshToken,
-            instanceUrl
-          })
+        if (accessToken || refreshToken) {
+            const res = await fetch(`${API_URL}/api/connections/auth-manual`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    ...payload,
+                    authType: 'oauth2',
+                    accessToken,
+                    refreshToken,
+                    instanceUrl
+                })
+            });
+
+            if (!res.ok) {
+                const error = await res.json();
+                throw new Error(error.error || 'Failed to save OAuth token connection');
+            }
+
+            return res.json();
+        }
+
+        // Save pending OAuth connection (user can click OAuth button to authorize)
+        const res = await fetch(`${API_URL}/api/connections`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                provider: activeProvider.id,
+                displayName: activeProvider.name,
+                authType: 'oauth2',
+                syncFrequency,
+                objects: selectedObjects
+            })
         });
 
         if (!res.ok) {
-          const error = await res.json();
-          throw new Error(error.error || 'Failed to save OAuth token connection');
+            const error = await res.json();
+            throw new Error(error.error || 'Failed to save OAuth connection');
         }
 
         return res.json();
-      }
-
-      // Save pending OAuth connection (user can click OAuth button to authorize)
-      const res = await fetch(`${API_URL}/api/connections`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          provider: activeProvider.id,
-          displayName: activeProvider.name,
-          authType: 'oauth2',
-          syncFrequency,
-          objects: selectedObjects
-        })
-      });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || 'Failed to save OAuth connection');
-      }
-
-      return res.json();
     }
 
     throw new Error('Unknown auth type');
