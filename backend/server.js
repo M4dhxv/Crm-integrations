@@ -154,9 +154,9 @@ app.post('/api/start-oauth', authMiddleware, async (req, res) => {
   const { provider } = req.body;
 
   const redirectUrls = {
-    salesforce: `/auth/salesforce?userId=${req.userId}`,
-    hubspot: `/auth/hubspot?userId=${req.userId}`,
-    outreach: `/auth/outreach?userId=${req.userId}`
+    salesforce: `/api/auth/salesforce?userId=${req.userId}`,
+    hubspot: `/api/auth/hubspot?userId=${req.userId}`,
+    outreach: `/api/auth/outreach?userId=${req.userId}`
   };
 
   if (!redirectUrls[provider]) {
@@ -250,11 +250,11 @@ app.post('/api/connections/auth-key', authMiddleware, async (req, res) => {
 // ============================================
 
 // Salesforce OAuth
-app.get('/auth/salesforce', (req, res) => {
+app.get(['/auth/salesforce', '/api/auth/salesforce'], (req, res) => {
   const { userId } = req.query;
   const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
   const backendUrl = process.env.BACKEND_URL || dynamicHost;
-  const redirectUri = `${backendUrl}/callback/salesforce`;
+  const redirectUri = `${backendUrl}/api/callback/salesforce`;
   const clientId = process.env.SALESFORCE_CLIENT_ID;
   
   if (!clientId) {
@@ -265,7 +265,7 @@ app.get('/auth/salesforce', (req, res) => {
   res.redirect(authUrl);
 });
 
-app.get('/callback/salesforce', async (req, res) => {
+app.get(['/callback/salesforce', '/api/callback/salesforce'], async (req, res) => {
   const { code, state } = req.query;
   
   try {
@@ -277,7 +277,7 @@ app.get('/callback/salesforce', async (req, res) => {
         grant_type: 'authorization_code',
         client_id: process.env.SALESFORCE_CLIENT_ID,
         client_secret: process.env.SALESFORCE_CLIENT_SECRET,
-        redirect_uri: `${backendUrl}/callback/salesforce`,
+        redirect_uri: `${backendUrl}/api/callback/salesforce`,
         code
       }
     });
@@ -305,11 +305,11 @@ app.get('/callback/salesforce', async (req, res) => {
 });
 
 // HubSpot OAuth
-app.get('/auth/hubspot', (req, res) => {
+app.get(['/auth/hubspot', '/api/auth/hubspot'], (req, res) => {
   const { userId } = req.query;
   const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
   const backendUrl = process.env.BACKEND_URL || dynamicHost;
-  const redirectUri = `${backendUrl}/callback/hubspot`;
+  const redirectUri = `${backendUrl}/api/callback/hubspot`;
   const clientId = process.env.HUBSPOT_CLIENT_ID;
   
   if (!clientId) {
@@ -320,7 +320,7 @@ app.get('/auth/hubspot', (req, res) => {
   res.redirect(authUrl);
 });
 
-app.get('/callback/hubspot', async (req, res) => {
+app.get(['/callback/hubspot', '/api/callback/hubspot'], async (req, res) => {
   const { code, state } = req.query;
   
   try {
@@ -331,7 +331,7 @@ app.get('/callback/hubspot', async (req, res) => {
       grant_type: 'authorization_code',
       client_id: process.env.HUBSPOT_CLIENT_ID,
       client_secret: process.env.HUBSPOT_CLIENT_SECRET,
-      redirect_uri: `${backendUrl}/callback/hubspot`,
+      redirect_uri: `${backendUrl}/api/callback/hubspot`,
       code
     });
 
@@ -358,11 +358,11 @@ app.get('/callback/hubspot', async (req, res) => {
 });
 
 // Outreach OAuth
-app.get('/auth/outreach', (req, res) => {
+app.get(['/auth/outreach', '/api/auth/outreach'], (req, res) => {
   const { userId } = req.query;
   const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
   const backendUrl = process.env.BACKEND_URL || dynamicHost;
-  const redirectUri = `${backendUrl}/callback/outreach`;
+  const redirectUri = `${backendUrl}/api/callback/outreach`;
   const clientId = process.env.OUTREACH_CLIENT_ID;
   
   if (!clientId) {
@@ -373,7 +373,7 @@ app.get('/auth/outreach', (req, res) => {
   res.redirect(authUrl);
 });
 
-app.get('/callback/outreach', async (req, res) => {
+app.get(['/callback/outreach', '/api/callback/outreach'], async (req, res) => {
   const { code, state } = req.query;
   
   try {
@@ -384,7 +384,7 @@ app.get('/callback/outreach', async (req, res) => {
       grant_type: 'authorization_code',
       client_id: process.env.OUTREACH_CLIENT_ID,
       client_secret: process.env.OUTREACH_CLIENT_SECRET,
-      redirect_uri: `${backendUrl}/callback/outreach`,
+      redirect_uri: `${backendUrl}/api/callback/outreach`,
       code
     });
 
