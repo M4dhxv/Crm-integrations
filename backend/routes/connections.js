@@ -142,13 +142,21 @@ router.post('/:id/sync', async (req, res, next) => {
     // Verify ownership
     const { data: conn } = await req.supabase
       .from('data_source_connections')
-      .select('id, provider')
+      .select('id, provider, auth_type, credentials')
       .eq('id', id)
       .eq('user_id', req.userId)
       .single();
 
     if (!conn) {
       return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    const creds = conn.credentials || {};
+    const hasOAuthToken = Boolean(creds.access_token || creds.accessToken);
+    const hasApiKey = Boolean(creds.apiKey || creds.accessKey);
+
+    if ((conn.auth_type === 'oauth2' && !hasOAuthToken) || (conn.auth_type === 'api_key' && !hasApiKey)) {
+      return res.status(400).json({ error: 'Connection is missing required credentials. Reconnect or re-save credentials first.' });
     }
 
     // Get enabled objects
