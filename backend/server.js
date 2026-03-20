@@ -328,6 +328,7 @@ app.get('/api/config-status', (req, res) => {
     salesforce_client_secret: process.env.SALESFORCE_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
     hubspot_client_id: process.env.HUBSPOT_CLIENT_ID ? '✅ loaded' : '❌ missing',
     hubspot_client_secret: process.env.HUBSPOT_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
+    hubspot_oauth_scopes: process.env.HUBSPOT_OAUTH_SCOPES || 'crm.objects.contacts.read crm.objects.companies.read',
 
     backend_url: process.env.BACKEND_URL || 'auto-detect',
     frontend_url: process.env.FRONTEND_URL || 'auto-detect',
@@ -640,13 +641,14 @@ app.get(['/auth/hubspot', '/api/auth/hubspot'], (req, res) => {
   const backendUrl = process.env.BACKEND_URL || dynamicHost;
   const redirectUri = `${backendUrl}/api/callback/hubspot`;
   const clientId = process.env.HUBSPOT_CLIENT_ID;
+  const hubspotScopes = process.env.HUBSPOT_OAUTH_SCOPES || 'crm.objects.contacts.read crm.objects.companies.read';
   
   if (!clientId) {
     return res.status(400).json({ error: 'HubSpot OAuth not configured' });
   }
 
   const oauthState = state || userId;
-  const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent('crm.objects.contacts.read crm.objects.companies.read')}&state=${encodeURIComponent(oauthState || '')}`;
+  const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(hubspotScopes)}&state=${encodeURIComponent(oauthState || '')}`;
   res.redirect(authUrl);
 });
 
