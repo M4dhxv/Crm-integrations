@@ -14,7 +14,7 @@ router.get('/', async (req, res, next) => {
     const { data, error } = await req.supabase
       .from('data_source_connections')
       .select(`
-        id, provider, display_name, auth_type, status,
+        id, provider, display_name, auth_type, status, credentials,
         sync_frequency, instance_url, last_connected_at,
         created_at, updated_at
       `)
@@ -43,8 +43,18 @@ router.get('/', async (req, res, next) => {
         .eq('connection_id', conn.id)
         .eq('is_deleted', false);
 
+      const creds = conn.credentials || {};
+      const hasOAuthToken = Boolean(creds.access_token || creds.accessToken);
+      const hasApiKey = Boolean(creds.apiKey || creds.accessKey);
+      const hasCredentials = conn.auth_type === 'oauth2'
+        ? hasOAuthToken
+        : (conn.auth_type === 'api_key' ? hasApiKey : true);
+
+      const { credentials, ...safeConn } = conn;
+
       return {
-        ...conn,
+        ...safeConn,
+        has_credentials: hasCredentials,
         health_status: healthData?.health_status || 'pending',
         contact_count: contactCount || 0,
         deal_count: dealCount || 0,

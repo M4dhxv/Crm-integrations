@@ -108,13 +108,13 @@ async function renderGrid() {
     const providerState = PROVIDERS.map(provider => {
       const providerConnections = connections.filter(c => c.provider === provider.id);
       const connection = providerConnections.sort((a, b) => {
-        const aConnected = a.status === 'connected' ? 1 : 0;
-        const bConnected = b.status === 'connected' ? 1 : 0;
+        const aConnected = (a.status === 'connected' && a.has_credentials !== false) ? 1 : 0;
+        const bConnected = (b.status === 'connected' && b.has_credentials !== false) ? 1 : 0;
         if (aConnected !== bConnected) return bConnected - aConnected;
         return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
       })[0];
 
-      const isConnected = !!connection && connection.status === 'connected';
+      const isConnected = !!connection && connection.status === 'connected' && connection.has_credentials !== false;
         const lastSync = connection?.last_synced_at || connection?.lastSyncedAt || connection?.updated_at || null;
         return { provider, connection, isConnected, lastSync };
     });
