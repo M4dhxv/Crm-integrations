@@ -363,8 +363,12 @@ app.use((req, res) => {
 // ============================================
 // START SERVER
 // ============================================
-app.listen(PORT, () => {
-  console.log(`[${new Date().toISOString()}] ✅ Backend running on port ${PORT}`);
-  console.log(`[${new Date().toISOString()}] Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
-  console.log(`[${new Date().toISOString()}] Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`[${new Date().toISOString()}] ✅ Backend running on port ${PORT}`);
+    console.log(`[${new Date().toISOString()}] Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
+    console.log(`[${new Date().toISOString()}] Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
+}
+
+export default app;

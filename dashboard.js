@@ -2,7 +2,7 @@ import { requireAuth } from './auth.js';
 import { renderNav } from './nav.js';
 import { supabase } from './supabase.js';
 
-const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+const API_URL = import.meta.env.VITE_BACKEND_URL || '';
 
 // Provider static data for UI
 const PROVIDERS = {
