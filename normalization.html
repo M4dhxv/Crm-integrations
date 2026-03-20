@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Normalize and standardize CRM data across platforms — CRM Hub">
+    <title>Normalization — CRM Hub</title>
+    <link rel="stylesheet" href="/index.css">
+</head>
+
+<body>
+    <div class="app-layout">
+        <div id="app-nav"></div>
+
+        <main class="app-main">
+            <header class="page-header">
+                <h1 class="page-title">Data <span class="text-gradient">Normalization</span></h1>
+                <p class="page-subtitle">Analyze, standardize, and score data quality across all connected CRM
+                    platforms.</p>
+            </header>
+
+            <!-- Overview Stats -->
+            <div class="stats-grid" id="norm-stats">
+                <div class="stat-card">
+                    <div class="stat-label">Records Processed</div>
+                    <div class="stat-value"><span class="spinner spinner-sm"></span></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Avg Quality Score</div>
+                    <div class="stat-value"><span class="spinner spinner-sm"></span></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Normalization Runs</div>
+                    <div class="stat-value"><span class="spinner spinner-sm"></span></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Unresolved Issues</div>
+                    <div class="stat-value"><span class="spinner spinner-sm"></span></div>
+                </div>
+            </div>
+
+            <!-- Platform Analysis Cards -->
+            <section class="mt-xl" id="platform-section">
+                <div class="flex items-center justify-between mb-md">
+                    <h2 class="text-xl font-bold">Platform Analysis</h2>
+                </div>
+                <div class="norm-platform-grid" id="platform-grid">
+                    <div class="loading-overlay">
+                        <span class="spinner"></span> Analyzing platforms...
+                    </div>
+                </div>
+            </section>
+
+            <!-- Field Coverage Heatmap -->
+            <section class="mt-xl" id="coverage-section">
+                <div class="flex items-center justify-between mb-md">
+                    <h2 class="text-xl font-bold">Field Coverage Analysis</h2>
+                </div>
+                <div class="norm-coverage-wrap" id="coverage-grid">
+                    <div class="loading-overlay">
+                        <span class="spinner"></span> Computing field coverage...
+                    </div>
+                </div>
+            </section>
+
+            <!-- Pipeline Run History -->
+            <section class="mt-xl" id="runs-section">
+                <div class="flex items-center justify-between mb-md">
+                    <h2 class="text-xl font-bold">Normalization Pipeline Log</h2>
+                </div>
+                <div class="norm-runs-wrap" id="runs-list">
+                    <div class="loading-overlay">
+                        <span class="spinner"></span> Loading pipeline history...
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script type="module" src="/normalization.js"></script>
+</body>
+
+</html>

@@ -45,6 +45,10 @@ function renderStats(data) {
     const healthLabel = data.connections.length === 0 ? 'No Data' : (hasErrors ? 'Degraded' : 'Healthy');
     const healthColorClass = data.connections.length === 0 ? 'text-secondary' : (hasErrors ? 'text-warning' : 'text-success');
 
+    // Data quality color
+    const qualityScore = data.avgQualityScore || 0;
+    const qualityColor = qualityScore >= 80 ? 'text-success' : qualityScore >= 50 ? 'text-warning' : 'text-danger';
+
     container.innerHTML = `
     <div class="stat-card">
       <div class="stat-label">Total Connections</div>
@@ -60,6 +64,11 @@ function renderStats(data) {
       <div class="stat-label">Total Deals</div>
       <div class="stat-value">${data.totalDeals.toLocaleString()}</div>
       <div class="stat-change stat-change-positive">Synced across all sources</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Data Quality</div>
+      <div class="stat-value ${qualityColor}">${qualityScore}<span style="font-size:var(--font-size-sm);color:var(--text-tertiary);font-weight:400">/100</span></div>
+      <div class="stat-change text-secondary"><a href="/normalization.html" style="font-size:var(--font-size-xs)">View analysis →</a></div>
     </div>
     <div class="stat-card">
       <div class="stat-label">System Health</div>
@@ -154,6 +163,7 @@ async function simulateSupabaseFetch() {
             resolve({
                 totalContacts: 14250,
                 totalDeals: 384,
+                avgQualityScore: 78,
                 connections: [
                     {
                         id: '1',

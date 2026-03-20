@@ -1,0 +1,186 @@
+/**
+ * Connections API Routes
+ * CRUD endpoints for managing CRM data source connections
+ */
+
+import { Router } from 'express';
+
+const router = Router();
+
+// GET /api/connections — list user's connections with health status
+router.get('/', async (req, res, next) => {
+  try {
+    const { data, error } = await req.supabase
+      .from('data_source_connections')
+      .select(`
+        id, provider, display_name, auth_type, status,
+        sync_frequency, instance_url, last_connected_at,
+        created_at, updated_at
+      `)
+      .eq('user_id', req.userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    // Enrich with health info
+    const enriched = await Promise.all(data.map(async (conn) => {
+      const { data: healthData } = await req.supabase
+        .from('connection_health')
+        .select('*')
+        .eq('connection_id', conn.id)
+        .single();
+
+      const { count: contactCount } = await req.supabase
+        .from('crm_contacts')
+        .select('*', { count: 'exact', head: true })
+        .eq('connection_id', conn.id)
+        .eq('is_deleted', false);
+
+      const { count: dealCount } = await req.supabase
+        .from('crm_deals')
+        .select('*', { count: 'exact', head: true })
+        .eq('connection_id', conn.id)
+        .eq('is_deleted', false);
+
+      return {
+        ...conn,
+        health_status: healthData?.health_status || 'pending',
+        contact_count: contactCount || 0,
+        deal_count: dealCount || 0,
+      };
+    }));
+
+    res.json({ data: enriched });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/connections — create new connection
+router.post('/', async (req, res, next) => {
+  try {
+    const { provider, displayName, authType, syncFrequency, instanceUrl, credentials, objects } = req.body;
+
+    if (!provider) {
+      return res.status(400).json({ error: 'Provider is required' });
+    }
+
+    // Verify provider exists in registry
+    const { data: registry } = await req.supabase
+      .from('connector_registry')
+      .select('*')
+      .eq('provider', provider)
+      .single();
+
+    if (!registry) {
+      return res.status(400).json({ error: `Unknown provider: ${provider}` });
+    }
+
+    // Insert connection
+    const { data: connection, error: connError } = await req.supabase
+      .from('data_source_connections')
+      .insert({
+        user_id: req.userId,
+        provider,
+        display_name: displayName || registry.display_name,
+        auth_type: authType || registry.auth_type,
+        sync_frequency: syncFrequency || 'hourly',
+        instance_url: instanceUrl || null,
+        credentials: credentials || {},
+        status: credentials ? 'connected' : 'pending',
+        last_connected_at: credentials ? new Date().toISOString() : null,
+      })
+      .select()
+      .single();
+
+    if (connError) throw connError;
+
+    // Create connector_objects
+    const objectsToCreate = objects || registry.supported_objects;
+    if (objectsToCreate && objectsToCreate.length > 0) {
+      const objectRows = objectsToCreate.map(obj => ({
+        connection_id: connection.id,
+        provider,
+        object_type: typeof obj === 'string' ? obj : obj.id,
+        sync_enabled: typeof obj === 'object' ? obj.enabled !== false : true,
+      }));
+
+      await req.supabase.from('connector_objects').insert(objectRows);
+    }
+
+    res.status(201).json({ data: connection });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE /api/connections/:id — remove connection
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const { error } = await req.supabase
+      .from('data_source_connections')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', req.userId);
+
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/connections/:id/sync — trigger manual sync
+router.post('/:id/sync', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Verify ownership
+    const { data: conn } = await req.supabase
+      .from('data_source_connections')
+      .select('id, provider')
+      .eq('id', id)
+      .eq('user_id', req.userId)
+      .single();
+
+    if (!conn) {
+      return res.status(404).json({ error: 'Connection not found' });
+    }
+
+    // Get enabled objects
+    const { data: objects } = await req.supabase
+      .from('connector_objects')
+      .select('object_type')
+      .eq('connection_id', id)
+      .eq('sync_enabled', true);
+
+    // Create sync jobs for each object
+    const jobs = (objects || []).map(obj => ({
+      connection_id: id,
+      provider: conn.provider,
+      object_type: obj.object_type,
+      job_type: 'incremental',
+      status: 'pending',
+    }));
+
+    if (jobs.length > 0) {
+      const { data: createdJobs, error: jobError } = await req.supabase
+        .from('sync_jobs')
+        .insert(jobs)
+        .select();
+
+      if (jobError) throw jobError;
+
+      res.json({ data: createdJobs, message: `${jobs.length} sync jobs queued` });
+    } else {
+      res.json({ data: [], message: 'No enabled objects to sync' });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+export default router;

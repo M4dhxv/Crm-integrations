@@ -6,7 +6,9 @@
   "main": "server.js",
   "scripts": {
     "dev": "node --watch server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "worker": "node worker.js",
+    "dev:worker": "nodemon worker.js"
   },
   "dependencies": {
     "express": "^4.18.2",

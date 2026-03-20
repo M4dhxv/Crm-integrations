@@ -10,6 +10,7 @@ export default defineConfig({
         signup: resolve(__dirname, 'signup.html'),
         dashboard: resolve(__dirname, 'dashboard.html'),
         connectors: resolve(__dirname, 'connectors.html'),
+        normalization: resolve(__dirname, 'normalization.html'),
       },
     },
   },

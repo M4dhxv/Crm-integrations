@@ -13,10 +13,17 @@ const NAV_ITEMS = [
         href: '/connectors.html',
         icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/></svg>`,
     },
+    {
+        id: 'normalization',
+        label: 'Normalization',
+        href: '/normalization.html',
+        icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 16l4-8 4 4 4-10"/><circle cx="7" cy="16" r="1.5"/><circle cx="11" cy="8" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="19" cy="6" r="1.5"/></svg>`,
+    },
 ];
 
 function getActivePage() {
     const path = window.location.pathname;
+    if (path.includes('normalization')) return 'normalization';
     if (path.includes('connectors')) return 'connectors';
     return 'dashboard';
 }

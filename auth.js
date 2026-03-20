@@ -53,8 +53,12 @@ export async function signInWithOAuth(provider) {
 
 // ---- Password reset ----
 export async function resetPassword(email) {
+    const redirectUrl = window.location.hostname === 'localhost' 
+        ? `${window.location.origin}/login.html`
+        : `https://${window.location.hostname}/login.html`;
+    
     const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/login.html`,
+        redirectTo: redirectUrl,
     });
     if (error) throw error;
     return data;

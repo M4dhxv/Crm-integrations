@@ -1278,6 +1278,286 @@ h4 { font-size: var(--font-size-lg); }
   }
 }
 
+/* ---- Normalization Platform Cards ---- */
+.norm-platform-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--space-md);
+}
+
+.norm-platform-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-lg);
+  backdrop-filter: blur(20px);
+  transition: all var(--transition-base);
+  position: relative;
+  overflow: hidden;
+}
+
+.norm-platform-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.06), transparent);
+}
+
+.norm-platform-card:hover {
+  border-color: var(--border-hover);
+  background: var(--bg-card-hover);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+
+.norm-platform-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-lg);
+}
+
+.norm-platform-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.norm-platform-name {
+  font-weight: 700;
+  font-size: var(--font-size-lg);
+}
+
+.norm-platform-sub {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+/* Quality Gauge (SVG ring) */
+.norm-quality-gauge {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.norm-gauge-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.norm-gauge-ring {
+  transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.norm-gauge-value {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: var(--font-size-sm);
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.norm-score-unit {
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+/* Platform Metrics Row */
+.norm-platform-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+  padding: var(--space-md);
+  background: var(--bg-glass);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.norm-metric {
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+.norm-metric-value {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+}
+
+.norm-metric-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+}
+
+/* Quality Distribution Bars */
+.norm-quality-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: var(--space-md);
+}
+
+.norm-quality-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.norm-quality-label {
+  width: 85px;
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.norm-bar-track {
+  flex: 1;
+  height: 8px;
+  background: var(--bg-input);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.norm-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.norm-bar-success { background: linear-gradient(90deg, var(--success), #34d399); }
+.norm-bar-warning { background: linear-gradient(90deg, var(--warning), #fbbf24); }
+.norm-bar-danger  { background: linear-gradient(90deg, var(--danger), #f87171); }
+
+.norm-quality-pct {
+  width: 36px;
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.norm-platform-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Field Coverage Heatmap */
+.norm-coverage-wrap {
+  overflow-x: auto;
+}
+
+.norm-heatmap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 500px;
+}
+
+.norm-heatmap-header {
+  display: grid;
+  grid-template-columns: 140px repeat(auto-fill, minmax(100px, 1fr));
+  gap: 2px;
+  margin-bottom: var(--space-xs);
+}
+
+.norm-heatmap-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-tertiary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 8px;
+}
+
+.norm-heatmap-provider {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 8px;
+  text-align: center;
+  background: var(--bg-card);
+  border-radius: var(--radius-sm);
+}
+
+.norm-heatmap-row {
+  display: grid;
+  grid-template-columns: 140px repeat(auto-fill, minmax(100px, 1fr));
+  gap: 2px;
+}
+
+.norm-heatmap-field {
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 10px 8px;
+  display: flex;
+  align-items: center;
+}
+
+.norm-heatmap-cell {
+  padding: 10px 8px;
+  text-align: center;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.norm-heat-high {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success);
+}
+
+.norm-heat-med {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warning);
+}
+
+.norm-heat-low {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+}
+
+.norm-heat-na {
+  background: var(--bg-input);
+  color: var(--text-muted);
+}
+
+/* Normalization Runs Wrap */
+.norm-runs-wrap {
+  overflow-x: auto;
+}
+
+.text-success { color: var(--success); }
+.text-warning { color: var(--warning); }
+.text-danger  { color: var(--danger); }
+.mt-xl { margin-top: var(--space-xl); }
+.font-bold { font-weight: 700; }
+.text-xl { font-size: var(--font-size-xl); }
+.mr-md { margin-right: var(--space-md); }
+.hidden-mobile { display: inline-flex; }
+
+@media (max-width: 768px) {
+  .norm-platform-grid {
+    grid-template-columns: 1fr;
+  }
+  .norm-platform-metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .hidden-mobile { display: none; }
+}
+
 /* ---- Utility ---- */
 .flex { display: flex; }
 .flex-col { flex-direction: column; }
