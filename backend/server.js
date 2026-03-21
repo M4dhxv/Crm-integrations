@@ -22,6 +22,24 @@ const BUILD_COMMIT = process.env.VERCEL_GIT_COMMIT_SHA || process.env.COMMIT_SHA
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const oauthStateStore = new Map();
 const OAUTH_STATE_SECRET = process.env.OAUTH_STATE_SECRET || process.env.SUPABASE_SERVICE_KEY || 'dev-oauth-state-secret';
+const DEFAULT_HUBSPOT_OAUTH_SCOPES = [
+  'crm.export',
+  'crm.import',
+  'crm.lists.read',
+  'crm.lists.write',
+  'crm.objects.appointments.read',
+  'crm.objects.appointments.sensitive.read',
+  'crm.objects.companies.read',
+  'crm.objects.contacts.read',
+  'crm.objects.courses.read',
+  'crm.objects.custom.read',
+  'crm.objects.deals.read',
+  'crm.objects.goals.read',
+  'crm.objects.invoices.read',
+  'crm.objects.leads.read',
+  'crm.schemas.custom.read',
+  'crm.schemas.deals.read',
+];
 
 // Initialize Supabase admin client (service role)
 let supabaseAdmin = null;
@@ -305,6 +323,21 @@ function getBearerToken(authHeader = '') {
   return authHeader.slice(7);
 }
 
+function getHubSpotScopesFromEnvOrDefault() {
+  const raw = String(process.env.HUBSPOT_OAUTH_SCOPES || '').trim();
+  const parsed = raw
+    .split(/[\s,]+/)
+    .map(s => s.trim())
+    .filter(Boolean)
+    .filter(s => s.toLowerCase() !== 'delete');
+
+  if (parsed.length > 0) {
+    return Array.from(new Set(parsed));
+  }
+
+  return DEFAULT_HUBSPOT_OAUTH_SCOPES;
+}
+
 async function processPendingSyncJobsOnce(supabaseClient, limit = 5) {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const nowIso = new Date().toISOString();
@@ -312,7 +345,7 @@ async function processPendingSyncJobsOnce(supabaseClient, limit = 5) {
   const { data: jobs, error } = await supabaseClient
     .from('sync_jobs')
     .select('*')
-    .or(`and(status.eq.pending,scheduled_at.lte.${nowIso}),and(status.eq.running,started_at.lt.${oneHourAgo})`)
+    .or(`and(status.eq.pending,scheduled_at.is.null),and(status.eq.pending,scheduled_at.lte.${nowIso}),and(status.eq.running,started_at.lt.${oneHourAgo})`)
     .order('created_at', { ascending: true })
     .limit(limit);
 
@@ -411,6 +444,7 @@ app.get('/api/health', async (req, res) => {
 
 // Debug endpoint to check env vars are loaded
 app.get('/api/config-status', (req, res) => {
+  const effectiveScopes = getHubSpotScopesFromEnvOrDefault();
   res.json({
     build_commit: BUILD_COMMIT,
     supabase_url: process.env.VITE_SUPABASE_URL ? '✅ loaded' : '❌ missing',
@@ -421,6 +455,8 @@ app.get('/api/config-status', (req, res) => {
     hubspot_client_id: process.env.HUBSPOT_CLIENT_ID ? '✅ loaded' : '❌ missing',
     hubspot_client_secret: process.env.HUBSPOT_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
     hubspot_oauth_scopes_env: process.env.HUBSPOT_OAUTH_SCOPES || '(unset)',
+    hubspot_oauth_scopes_effective: effectiveScopes.join(' '),
+    hubspot_oauth_scope_count: effectiveScopes.length,
     hubspot_pkce_mode: 'enabled',
 
     backend_url: process.env.BACKEND_URL || 'auto-detect',
@@ -795,7 +831,7 @@ app.get(['/auth/hubspot', '/api/auth/hubspot'], (req, res) => {
   const backendUrl = process.env.BACKEND_URL || dynamicHost;
   const redirectUri = `${backendUrl}/api/callback/hubspot`;
   const clientId = process.env.HUBSPOT_CLIENT_ID;
-  const hubspotScopes = (process.env.HUBSPOT_OAUTH_SCOPES || '').trim();
+  const hubspotScopes = getHubSpotScopesFromEnvOrDefault().join(' ');
   
   if (!clientId) {
     return res.status(400).json({ error: 'HubSpot OAuth not configured' });
@@ -808,7 +844,7 @@ app.get(['/auth/hubspot', '/api/auth/hubspot'], (req, res) => {
     ? toBase64Url(crypto.createHash('sha256').update(verifier).digest())
     : createPkcePair().challenge;
 
-  const scopeQuery = hubspotScopes ? `&scope=${encodeURIComponent(hubspotScopes)}` : '';
+  const scopeQuery = `&scope=${encodeURIComponent(hubspotScopes)}`;
   const authUrl = `https://app.hubspot.com/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}${scopeQuery}&state=${encodeURIComponent(oauthState || '')}&code_challenge=${encodeURIComponent(challenge)}&code_challenge_method=S256`;
   res.redirect(authUrl);
 });
