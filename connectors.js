@@ -46,9 +46,7 @@ const PROVIDERS = [
         tags: ['Intelligence', 'Calls'],
         fields: [{ id: 'instanceUrl', label: 'Company Domain', desc: 'e.g. acme.gong.io' }],
         objects: [
-            { id: 'calls', name: 'Call Metadata', desc: 'Sync participants, durations, topics' },
-            { id: 'transcripts', name: 'Transcripts', desc: 'Full conversational text (heavy)' },
-            { id: 'scorecards', name: 'Scorecards', desc: 'Rep evaluations' }
+          { id: 'calls', name: 'Call Metadata', desc: 'Sync participants, durations, topics' }
         ]
     },
     {

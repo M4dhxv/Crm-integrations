@@ -11,6 +11,8 @@ const router = Router();
 const PROVIDER_SUPPORTED_OBJECTS = {
   hubspot: new Set(['contacts', 'companies', 'deals']),
   salesforce: new Set(['contacts', 'leads', 'accounts', 'opportunities']),
+  pipedrive: new Set(['persons', 'organizations', 'deals']),
+  gong: new Set(['calls']),
 };
 
 // GET /api/connections — list user's connections with health status

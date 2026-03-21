@@ -41,6 +41,13 @@ const DEFAULT_HUBSPOT_OAUTH_SCOPES = [
   'crm.schemas.deals.read',
 ];
 
+const PROVIDER_SUPPORTED_OBJECTS = {
+  hubspot: new Set(['contacts', 'companies', 'deals']),
+  salesforce: new Set(['contacts', 'leads', 'accounts', 'opportunities']),
+  pipedrive: new Set(['persons', 'organizations', 'deals']),
+  gong: new Set(['calls']),
+};
+
 // Initialize Supabase admin client (service role)
 let supabaseAdmin = null;
 const hasSupabaseUrl = Boolean(process.env.VITE_SUPABASE_URL);
@@ -291,8 +298,8 @@ async function replaceConnectionObjects({
 
   const rows = objects.map((obj) => ({
     connection_id: connectionId,
-    provider,
-    object_type: typeof obj === 'string' ? obj : obj.id,
+    provider: String(provider || '').toLowerCase(),
+    object_type: String(typeof obj === 'string' ? obj : obj.id).toLowerCase(),
     sync_enabled: true,
   }));
 
@@ -612,7 +619,9 @@ async function handleManualConnectionAuth(req, res, forcedAuthType = null) {
       authType,
     } = req.body;
 
-    if (!provider) {
+    const providerKey = String(provider || '').toLowerCase();
+
+    if (!providerKey) {
       return res.status(400).json({ error: 'Provider is required' });
     }
 
@@ -622,17 +631,24 @@ async function handleManualConnectionAuth(req, res, forcedAuthType = null) {
     }
 
     // Validate HubSpot token up-front so we fail fast instead of creating broken connections.
-    if (provider === 'hubspot' && accessToken) {
+    if (providerKey === 'hubspot' && accessToken) {
       await validateHubSpotAccessToken(accessToken);
     }
+
+    const requestedObjects = Array.isArray(objects) ? objects : [];
+    const supportedSet = PROVIDER_SUPPORTED_OBJECTS[providerKey] || null;
+    const normalizedObjects = requestedObjects
+      .map((obj) => String(typeof obj === 'string' ? obj : obj?.id || '').toLowerCase())
+      .filter(Boolean)
+      .filter((obj) => !supportedSet || supportedSet.has(obj));
 
     // Upsert connection with provided credentials
     const connection = await upsertConnectionByUserAndProvider({
       supabaseClient: req.supabase,
       userId: req.userId,
-      provider,
+      provider: providerKey,
       patch: {
-        display_name: displayName || provider,
+        display_name: displayName || providerKey,
         auth_type: forcedAuthType || authType || (accessToken ? 'oauth2' : 'api_key'),
         sync_frequency: syncFrequency || 'hourly',
         instance_url: instanceUrl || null,
@@ -649,18 +665,18 @@ async function handleManualConnectionAuth(req, res, forcedAuthType = null) {
     });
 
     // Refresh connector_objects records
-    const objectsToCreate = objects || [];
+    const objectsToCreate = normalizedObjects;
     await replaceConnectionObjects({
       supabaseClient: req.supabase,
       connectionId: connection.id,
-      provider,
+      provider: providerKey,
       objects: objectsToCreate,
     });
 
     // Trigger immediate sync jobs for all enabled objects
     const jobsToCreate = (objectsToCreate || []).map(obj => ({
       connection_id: connection.id,
-      provider,
+      provider: providerKey,
       object_type: typeof obj === 'string' ? obj : obj.id,
       job_type: 'incremental',
       status: 'pending',
@@ -723,6 +739,12 @@ app.post('/api/connections/test-fetch', authMiddleware, async (req, res) => {
         adapter = mod;
       } else if (connection.provider === 'hubspot') {
         const mod = await import('./sync/adapters/hubspot.js');
+        adapter = mod;
+      } else if (connection.provider === 'pipedrive') {
+        const mod = await import('./sync/adapters/pipedrive.js');
+        adapter = mod;
+      } else if (connection.provider === 'gong') {
+        const mod = await import('./sync/adapters/gong.js');
         adapter = mod;
       } else {
         return res.status(400).json({ error: `Provider ${connection.provider} adapter not available for testing` });

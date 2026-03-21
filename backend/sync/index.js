@@ -7,17 +7,21 @@ import { runNormalizationPipeline } from '../normalizer/index.js';
 import { normalizeRecords } from '../normalizer/index.js';
 import * as salesforceAdapter from './adapters/salesforce.js';
 import * as hubspotAdapter from './adapters/hubspot.js';
+import * as pipedriveAdapter from './adapters/pipedrive.js';
+import * as gongAdapter from './adapters/gong.js';
 
 const ADAPTERS = {
   salesforce: salesforceAdapter,
   hubspot: hubspotAdapter,
-  // pipedrive: pipedriveAdapter, // TODO: add others
-  // gong: gongAdapter,
+  pipedrive: pipedriveAdapter,
+  gong: gongAdapter,
 };
 
 const SUPPORTED_OBJECTS = {
   hubspot: new Set(['contacts', 'companies', 'deals']),
   salesforce: new Set(['contacts', 'leads', 'accounts', 'opportunities']),
+  pipedrive: new Set(['persons', 'organizations', 'deals']),
+  gong: new Set(['calls']),
 };
 
 /**
