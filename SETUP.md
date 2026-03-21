@@ -51,6 +51,8 @@ SALESFORCE_CLIENT_ID=your-client-id
 SALESFORCE_CLIENT_SECRET=your-client-secret
 HUBSPOT_CLIENT_ID=your-client-id
 HUBSPOT_CLIENT_SECRET=your-client-secret
+PIPEDRIVE_CLIENT_ID=your-client-id
+PIPEDRIVE_CLIENT_SECRET=your-client-secret
 OUTREACH_CLIENT_ID=your-client-id
 OUTREACH_CLIENT_SECRET=your-client-secret
 BACKEND_URL=https://your-vercel-project.vercel.app
@@ -75,6 +77,14 @@ FRONTEND_URL=https://your-vercel-project.vercel.app
 3. Request scopes: `crm.objects.contacts.read`, `crm.objects.companies.read`
 4. Copy Client ID/Secret to Vercel
 5. In app, click "Connect to HubSpot" button
+
+#### Pipedrive OAuth App Setup
+
+1. Go to Pipedrive Developer Hub and create an OAuth app
+2. Set **Redirect URI**: `https://your-vercel-project.vercel.app/api/callback/pipedrive`
+3. Copy **Client ID** → `PIPEDRIVE_CLIENT_ID`
+4. Copy **Client Secret** → `PIPEDRIVE_CLIENT_SECRET`
+5. In app, click "Connect to Pipedrive" button
 
 ## How Data Fetching Works
 

@@ -247,6 +247,18 @@ function isRawSchemaUnavailableError(error) {
   return msg.includes('Invalid schema: raw') || msg.includes("public.raw.source_objects");
 }
 
+function prepareRecordForUpsert(record) {
+  if (!record || !record.external_id) return null;
+
+  const clean = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (key.startsWith('_')) continue;
+    clean[key] = value;
+  }
+
+  return clean;
+}
+
 async function normalizeObjectBatchDirectly(supabase, connectionId, provider, objectType, records, meta) {
   const rawLikeRecords = (records || []).map(record => ({
     external_id: record?.id,
@@ -263,10 +275,16 @@ async function normalizeObjectBatchDirectly(supabase, connectionId, provider, ob
   );
 
   if (result.normalized.length > 0) {
+    const rowsToUpsert = result.normalized
+      .map(prepareRecordForUpsert)
+      .filter(Boolean);
+
+    if (rowsToUpsert.length === 0) return;
+
     const { error: upsertError } = await supabase
       .from(result.targetTable)
       .upsert(
-        result.normalized.filter(r => !r._company_ref && !r._owner_ref && r.external_id),
+        rowsToUpsert,
         { onConflict: 'connection_id,provider,external_id' }
       );
     if (upsertError) throw upsertError;

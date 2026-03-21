@@ -8,6 +8,18 @@ import { getFieldMap, getSupportedObjects, getAllFieldMaps } from './field-maps.
 import { applyTransform, resolveFieldPath, standardizeAddress } from './standardizers.js';
 import { scoreRecord, scorePlatform } from './quality-scorer.js';
 
+function prepareRecordForUpsert(record) {
+  if (!record || !record.external_id) return null;
+
+  const clean = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (key.startsWith('_')) continue;
+    clean[key] = value;
+  }
+
+  return clean;
+}
+
 /**
  * Process a batch of raw source objects through the normalization pipeline
  * 
@@ -176,10 +188,16 @@ export async function runNormalizationPipeline(supabase, connectionId, provider,
 
       // Upsert normalized records (if any)
       if (result.normalized.length > 0) {
+        const rowsToUpsert = result.normalized
+          .map(prepareRecordForUpsert)
+          .filter(Boolean);
+
+        if (rowsToUpsert.length === 0) continue;
+
         const { error: upsertError } = await supabase
           .from(result.targetTable)
           .upsert(
-            result.normalized.filter(r => !r._company_ref && !r._owner_ref && r.external_id),
+            rowsToUpsert,
             { onConflict: 'connection_id,provider,external_id' }
           );
 

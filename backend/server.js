@@ -461,6 +461,9 @@ app.get('/api/config-status', (req, res) => {
     salesforce_client_secret: process.env.SALESFORCE_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
     hubspot_client_id: process.env.HUBSPOT_CLIENT_ID ? '✅ loaded' : '❌ missing',
     hubspot_client_secret: process.env.HUBSPOT_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
+    pipedrive_client_id: process.env.PIPEDRIVE_CLIENT_ID ? '✅ loaded' : '❌ missing',
+    pipedrive_client_secret: process.env.PIPEDRIVE_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
+    pipedrive_oauth_scopes_env: process.env.PIPEDRIVE_OAUTH_SCOPES || '(unset)',
     hubspot_oauth_scopes_env: process.env.HUBSPOT_OAUTH_SCOPES || '(unset)',
     hubspot_oauth_scopes_effective: effectiveScopes.join(' '),
     hubspot_oauth_scope_count: effectiveScopes.length,
@@ -508,7 +511,8 @@ app.post('/api/start-oauth', authMiddleware, async (req, res) => {
 
   const redirectUrls = {
     salesforce: `/api/auth/salesforce?userId=${req.userId}`,
-    hubspot: `/api/auth/hubspot?userId=${req.userId}`
+    hubspot: `/api/auth/hubspot?userId=${req.userId}`,
+    pipedrive: `/api/auth/pipedrive?userId=${req.userId}`,
   };
 
   if (!redirectUrls[provider]) {
@@ -914,6 +918,84 @@ app.get(['/callback/hubspot', '/api/callback/hubspot'], async (req, res) => {
   } catch (err) {
     console.error(`[${new Date().toISOString()}] ERROR HubSpot OAuth:`, err.message);
     res.redirect(`${frontendUrl}/dashboard.html?status=error&provider=hubspot`);
+  }
+});
+
+// Pipedrive OAuth
+app.get(['/auth/pipedrive', '/api/auth/pipedrive'], (req, res) => {
+  const { userId, state } = req.query;
+  const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+  const backendUrl = process.env.BACKEND_URL || dynamicHost;
+  const redirectUri = `${backendUrl}/api/callback/pipedrive`;
+  const clientId = process.env.PIPEDRIVE_CLIENT_ID;
+
+  if (!clientId) {
+    return res.status(400).json({ error: 'Pipedrive OAuth not configured (missing PIPEDRIVE_CLIENT_ID)' });
+  }
+
+  const oauthState = state || userId;
+  const scope = String(process.env.PIPEDRIVE_OAUTH_SCOPES || '').trim();
+  const authUrl = `https://oauth.pipedrive.com/oauth/authorize?client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&state=${encodeURIComponent(oauthState || '')}${scope ? `&scope=${encodeURIComponent(scope)}` : ''}`;
+  res.redirect(authUrl);
+});
+
+app.get(['/callback/pipedrive', '/api/callback/pipedrive'], async (req, res) => {
+  const { code, state } = req.query;
+  const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+  const frontendUrl = process.env.FRONTEND_URL || dynamicHost || 'http://localhost:5173';
+
+  try {
+    const backendUrl = process.env.BACKEND_URL || dynamicHost;
+    const oauthState = consumeOAuthState(String(state || ''), 'pipedrive');
+    const userId = oauthState?.userId || (isUuid(state) ? state : null);
+
+    if (!userId || !code) {
+      return res.redirect(`${frontendUrl}/dashboard.html?status=error&provider=pipedrive`);
+    }
+
+    if (!process.env.PIPEDRIVE_CLIENT_ID || !process.env.PIPEDRIVE_CLIENT_SECRET) {
+      return res.redirect(`${frontendUrl}/dashboard.html?status=error&provider=pipedrive`);
+    }
+
+    const tokenBody = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: String(code),
+      redirect_uri: `${backendUrl}/api/callback/pipedrive`,
+      client_id: process.env.PIPEDRIVE_CLIENT_ID,
+      client_secret: process.env.PIPEDRIVE_CLIENT_SECRET,
+    });
+
+    const tokenRes = await axios.post('https://oauth.pipedrive.com/oauth/token', tokenBody.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      timeout: 20000,
+    });
+
+    const { access_token, refresh_token, api_domain } = tokenRes.data || {};
+    const normalizedApiDomain = api_domain ? String(api_domain).replace(/\/+$/, '') : null;
+
+    await upsertConnectionByUserAndProvider({
+      supabaseClient: supabaseAdmin,
+      userId,
+      provider: 'pipedrive',
+      patch: {
+        display_name: 'pipedrive',
+        auth_type: 'oauth2',
+        status: 'connected',
+        credentials: {
+          access_token,
+          refresh_token: refresh_token || null,
+          instanceUrl: normalizedApiDomain,
+        },
+        instance_url: normalizedApiDomain,
+        last_connected_at: new Date().toISOString(),
+      }
+    });
+
+    console.log(`[${new Date().toISOString()}] INFO OAuth completed for pipedrive (user: ${userId})`);
+    res.redirect(`${frontendUrl}/dashboard.html?status=success&provider=pipedrive`);
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] ERROR Pipedrive OAuth:`, err.message);
+    res.redirect(`${frontendUrl}/dashboard.html?status=error&provider=pipedrive`);
   }
 });
 

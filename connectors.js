@@ -53,7 +53,7 @@ const PROVIDERS = [
         id: 'pipedrive',
         name: 'Pipedrive',
         desc: 'Sync Persons, Organizations, and PIPELINE Deals.',
-        auth: 'api_key',
+      auth: 'oauth2',
         icon: '🟢',
         bg: 'provider-pipedrive',
         tags: ['Sales', 'SMB'],

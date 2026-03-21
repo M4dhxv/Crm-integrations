@@ -19,10 +19,11 @@ export async function fetchData(objectType, credentials, instanceUrl) {
   }
 
   const apiToken = credentials?.apiKey || credentials?.accessKey || credentials?.api_token;
+  const accessToken = credentials?.access_token || credentials?.accessToken;
   const baseUrl = normalizeBaseUrl(instanceUrl || credentials?.instanceUrl);
 
-  if (!apiToken) {
-    throw new Error('Missing Pipedrive API token');
+  if (!apiToken && !accessToken) {
+    throw new Error('Missing Pipedrive credentials (API token or OAuth access token)');
   }
   if (!baseUrl) {
     throw new Error('Missing Pipedrive instance URL (e.g. https://yourcompany.pipedrive.com)');
@@ -35,10 +36,13 @@ export async function fetchData(objectType, credentials, instanceUrl) {
   while (hasMore && records.length < 5_000) {
     const response = await axios.get(`${baseUrl}/api/v1/${endpoint}`, {
       params: {
-        api_token: apiToken,
         start,
         limit: PAGE_LIMIT,
+        ...(apiToken ? { api_token: apiToken } : {}),
       },
+      headers: accessToken
+        ? { Authorization: `Bearer ${accessToken}` }
+        : undefined,
       timeout: REQUEST_TIMEOUT_MS,
     });
 
