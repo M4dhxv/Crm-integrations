@@ -79,7 +79,8 @@ export async function processSyncJob(job, supabase) {
       for (let i = 0; i < rawInserts.length; i += CHUNK_SIZE) {
         const chunk = rawInserts.slice(i, i + CHUNK_SIZE);
         const { error: insertError } = await supabase
-          .from('raw.source_objects')
+          .schema('raw')
+          .from('source_objects')
           .insert(chunk);
         
         if (insertError) throw insertError;

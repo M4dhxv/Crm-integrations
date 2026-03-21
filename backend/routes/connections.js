@@ -174,6 +174,8 @@ router.post('/:id/sync', async (req, res, next) => {
       return res.status(400).json({ error: 'Connection is missing required credentials. Reconnect or re-save credentials first.' });
     }
 
+    const providerKey = String(conn.provider || '').toLowerCase();
+
     // Get enabled objects
     let { data: objects } = await req.supabase
       .from('connector_objects')
@@ -193,7 +195,7 @@ router.post('/:id/sync', async (req, res, next) => {
       if (fallbackObjects.length > 0) {
         const rows = fallbackObjects.map(objectType => ({
           connection_id: id,
-          provider: conn.provider,
+          provider: providerKey,
           object_type: objectType,
           sync_enabled: true,
         }));
@@ -204,11 +206,11 @@ router.post('/:id/sync', async (req, res, next) => {
     }
 
     // Create sync jobs for each object
-    const supported = PROVIDER_SUPPORTED_OBJECTS[conn.provider];
+    const supported = PROVIDER_SUPPORTED_OBJECTS[providerKey];
     const enabledObjects = (objects || []).filter(obj => !supported || supported.has(obj.object_type));
     const jobs = enabledObjects.map(obj => ({
       connection_id: id,
-      provider: conn.provider,
+      provider: providerKey,
       object_type: obj.object_type,
       job_type: 'incremental',
       status: 'pending',

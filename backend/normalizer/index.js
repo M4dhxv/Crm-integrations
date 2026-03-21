@@ -145,7 +145,8 @@ export async function runNormalizationPipeline(supabase, connectionId, provider,
     for (const objectType of objectTypes) {
       // Fetch raw records for this object type
       const { data: rawRecords, error: fetchError } = await supabase
-        .from('raw.source_objects')
+        .schema('raw')
+        .from('source_objects')
         .select('*')
         .eq('connection_id', connectionId)
         .eq('provider', provider)
