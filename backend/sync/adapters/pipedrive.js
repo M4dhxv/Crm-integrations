@@ -20,6 +20,7 @@ export async function fetchData(objectType, credentials, instanceUrl) {
 
   const apiToken = credentials?.apiKey || credentials?.accessKey || credentials?.api_token;
   const accessToken = credentials?.access_token || credentials?.accessToken;
+  const apiTokenFallback = apiToken || accessToken || null;
   const baseUrl = normalizeBaseUrl(instanceUrl || credentials?.instanceUrl);
 
   if (!apiToken && !accessToken) {
@@ -34,17 +35,34 @@ export async function fetchData(objectType, credentials, instanceUrl) {
   const records = [];
 
   while (hasMore && records.length < 5_000) {
-    const response = await axios.get(`${baseUrl}/api/v1/${endpoint}`, {
-      params: {
-        start,
-        limit: PAGE_LIMIT,
-        ...(apiToken ? { api_token: apiToken } : {}),
-      },
-      headers: accessToken
-        ? { Authorization: `Bearer ${accessToken}` }
-        : undefined,
-      timeout: REQUEST_TIMEOUT_MS,
-    });
+    const requestWith = async ({ useBearer, tokenValue }) => {
+      return axios.get(`${baseUrl}/api/v1/${endpoint}`, {
+        params: {
+          start,
+          limit: PAGE_LIMIT,
+          ...(!useBearer && tokenValue ? { api_token: tokenValue } : {}),
+        },
+        headers: useBearer && tokenValue
+          ? { Authorization: `Bearer ${tokenValue}` }
+          : undefined,
+        timeout: REQUEST_TIMEOUT_MS,
+      });
+    };
+
+    let response;
+    try {
+      response = await requestWith({ useBearer: Boolean(accessToken && !apiToken), tokenValue: accessToken || apiToken });
+    } catch (error) {
+      const status = error?.response?.status;
+      const attemptedBearer = Boolean(accessToken && !apiToken);
+
+      // If user pasted a legacy API token into access_token field, retry as api_token query param.
+      if (status === 401 && attemptedBearer && apiTokenFallback) {
+        response = await requestWith({ useBearer: false, tokenValue: apiTokenFallback });
+      } else {
+        throw error;
+      }
+    }
 
     const pageData = response?.data?.data || [];
     records.push(...pageData);
