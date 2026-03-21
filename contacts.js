@@ -2,6 +2,13 @@ import { requireAuth } from './auth.js';
 import { renderNav } from './nav.js';
 import { supabase } from './supabase.js';
 
+const PAGE_SIZE = 100;
+const state = {
+  page: 1,
+  total: 0,
+  query: '',
+};
+
 async function init() {
   const session = await requireAuth();
   if (!session) return;
@@ -16,44 +23,27 @@ async function loadContactsPage() {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
 
-    const { data: contacts, error } = await supabase
-      .from('crm_contacts')
-      .select('id, first_name, last_name, email, phone, company_name, lifecycle_stage, provider, updated_at')
-      .order('updated_at', { ascending: false })
-      .limit(500);
-
-    if (error) {
-      console.error('Failed to load contacts:', error);
-      renderEmpty(container);
-      return;
-    }
-
-    if (!contacts || contacts.length === 0) {
-      renderEmpty(container);
-      return;
-    }
-
-    const providers = new Set(contacts.map(c => String(c.provider || '').toLowerCase()).filter(Boolean));
-    renderContacts(container, contacts, providers);
-    bindSearch(contacts);
+    renderContactsLayout(container);
+    bindSearch();
+    await fetchAndRenderPage();
   } catch (error) {
     console.error('Contacts page error:', error);
     renderEmpty(container);
   }
 }
 
-function renderContacts(container, contacts, providers) {
+function renderContactsLayout(container) {
   container.innerHTML = `
     <div class="contacts-summary-grid">
       <div class="stat-card">
         <div class="stat-label">Total Contacts</div>
-        <div class="stat-value">${contacts.length.toLocaleString()}</div>
-        <div class="stat-change text-secondary">Latest synced contacts</div>
+        <div class="stat-value" id="contacts-total-count">—</div>
+        <div class="stat-change text-secondary">Across all pages</div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Connected Providers</div>
-        <div class="stat-value">${providers.size}</div>
-        <div class="stat-change text-secondary">${Array.from(providers).map(formatProvider).join(', ') || '—'}</div>
+        <div class="stat-label">Rows Per Page</div>
+        <div class="stat-value">${PAGE_SIZE.toLocaleString()}</div>
+        <div class="stat-change text-secondary">Use Next/Previous to view all records</div>
       </div>
     </div>
 
@@ -75,36 +65,107 @@ function renderContacts(container, contacts, providers) {
               <th>Last Updated</th>
             </tr>
           </thead>
-          <tbody id="contacts-table-body">
-            ${contacts.map(renderContactRow).join('')}
-          </tbody>
+          <tbody id="contacts-table-body"></tbody>
         </table>
       </div>
+
+      <div class="contacts-pagination mt-md" id="contacts-pagination"></div>
     </div>
   `;
 }
 
-function bindSearch(allContacts) {
+function bindSearch() {
   const input = document.getElementById('contacts-search');
-  const tbody = document.getElementById('contacts-table-body');
-  if (!input || !tbody) return;
+  if (!input) return;
 
+  let timer = null;
   input.addEventListener('input', () => {
-    const q = input.value.trim().toLowerCase();
-    const filtered = !q
-      ? allContacts
-      : allContacts.filter(c => {
-          const name = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();
-          const email = String(c.email || '').toLowerCase();
-          const company = String(c.company_name || '').toLowerCase();
-          const provider = String(c.provider || '').toLowerCase();
-          return name.includes(q) || email.includes(q) || company.includes(q) || provider.includes(q);
-        });
-
-    tbody.innerHTML = filtered.length
-      ? filtered.map(renderContactRow).join('')
-      : `<tr><td colspan="6" class="contacts-empty-row">No matching contacts found.</td></tr>`;
+    window.clearTimeout(timer);
+    timer = window.setTimeout(async () => {
+      state.query = input.value.trim();
+      state.page = 1;
+      await fetchAndRenderPage();
+    }, 250);
   });
+}
+
+async function fetchAndRenderPage() {
+  const tbody = document.getElementById('contacts-table-body');
+  const totalEl = document.getElementById('contacts-total-count');
+  const paginationEl = document.getElementById('contacts-pagination');
+  if (!tbody || !totalEl || !paginationEl) return;
+
+  const from = (state.page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  let query = supabase
+    .from('crm_contacts')
+    .select('id, first_name, last_name, email, phone, company_name, provider, updated_at', { count: 'exact' })
+    .eq('is_deleted', false)
+    .order('updated_at', { ascending: false })
+    .range(from, to);
+
+  if (state.query) {
+    const safe = state.query.replace(/,/g, ' ');
+    query = query.or(`first_name.ilike.%${safe}%,last_name.ilike.%${safe}%,email.ilike.%${safe}%,company_name.ilike.%${safe}%,provider.ilike.%${safe}%`);
+  }
+
+  const { data: contacts, error, count } = await query;
+
+  if (error) {
+    console.error('Failed to load contacts:', error);
+    tbody.innerHTML = `<tr><td colspan="6" class="contacts-empty-row">Failed to load contacts.</td></tr>`;
+    return;
+  }
+
+  state.total = Number(count || 0);
+  totalEl.textContent = state.total.toLocaleString();
+
+  if (!contacts || contacts.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" class="contacts-empty-row">No matching contacts found.</td></tr>`;
+  } else {
+    tbody.innerHTML = contacts.map(renderContactRow).join('');
+  }
+
+  renderPagination(paginationEl, contacts.length);
+}
+
+function renderPagination(container, pageCount) {
+  const totalPages = Math.max(1, Math.ceil(state.total / PAGE_SIZE));
+  if (state.page > totalPages) state.page = totalPages;
+
+  const from = state.total === 0 ? 0 : ((state.page - 1) * PAGE_SIZE) + 1;
+  const to = state.total === 0 ? 0 : Math.min(state.page * PAGE_SIZE, state.total);
+
+  container.innerHTML = `
+    <div class="flex items-center justify-between gap-md" style="flex-wrap:wrap;">
+      <div class="text-sm text-secondary">Showing ${from.toLocaleString()}–${to.toLocaleString()} of ${state.total.toLocaleString()}</div>
+      <div class="flex items-center gap-sm">
+        <button class="btn btn-secondary btn-sm" id="contacts-prev" ${state.page <= 1 ? 'disabled' : ''}>Previous</button>
+        <span class="text-sm text-secondary">Page ${state.page} of ${totalPages}</span>
+        <button class="btn btn-secondary btn-sm" id="contacts-next" ${(state.page >= totalPages || pageCount < PAGE_SIZE) ? 'disabled' : ''}>Next</button>
+      </div>
+    </div>
+  `;
+
+  const prev = document.getElementById('contacts-prev');
+  const next = document.getElementById('contacts-next');
+
+  if (prev) {
+    prev.addEventListener('click', async () => {
+      if (state.page <= 1) return;
+      state.page -= 1;
+      await fetchAndRenderPage();
+    });
+  }
+
+  if (next) {
+    next.addEventListener('click', async () => {
+      if (state.page >= totalPages) return;
+      state.page += 1;
+      await fetchAndRenderPage();
+    });
+  }
 }
 
 function renderContactRow(contact) {
