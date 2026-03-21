@@ -1,6 +1,7 @@
 import { requireAuth } from './auth.js';
 import { renderNav } from './nav.js';
 import { supabase } from './supabase.js';
+const API_URL = import.meta.env.VITE_BACKEND_URL || '';
 
 // ---- Provider static data ----
 const PROVIDERS = {
@@ -17,7 +18,7 @@ async function init() {
   if (!session) return;
 
   await renderNav('app-nav');
-  const data = await loadMockData();
+  const data = await loadRealData();
   renderStats(data.stats);
   renderPlatformGrid(data.platforms);
   renderCoverageGrid(data.platforms);
@@ -256,96 +257,128 @@ function formatFieldName(field) {
   return field.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
 }
 
-// ---- MOCK DATA ----
-async function loadMockData() {
-  return new Promise(resolve => {
-    setTimeout(() => {
-      resolve({
-        stats: {
-          totalRecordsProcessed: 18420,
-          totalRecordsNormalized: 17854,
-          avgQualityScore: 78,
-          totalRuns: 14,
-          lastRunTime: '23 mins ago',
-          unresolvedErrors: 12,
+async function loadRealData() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return emptyNormalizationData();
+
+    const headers = { Authorization: `Bearer ${session.access_token}` };
+
+    const [statsRes, platformRes, runsRes, connectionsRes] = await Promise.all([
+      fetch(`${API_URL}/api/normalized/stats`, { headers }),
+      fetch(`${API_URL}/api/normalized/platform-analysis`, { headers }),
+      fetch(`${API_URL}/api/normalized/runs?limit=30&offset=0`, { headers }),
+      fetch(`${API_URL}/api/connections`, { headers }),
+    ]);
+
+    const statsRaw = statsRes.ok ? await statsRes.json() : {};
+    const platformRaw = platformRes.ok ? ((await platformRes.json())?.data || []) : [];
+    const runsRaw = runsRes.ok ? ((await runsRes.json())?.data || []) : [];
+    const connections = connectionsRes.ok ? ((await connectionsRes.json())?.data || []) : [];
+
+    const connById = new Map(connections.map(c => [c.id, c]));
+
+    const companyCounts = {};
+    await Promise.all(connections.map(async (conn) => {
+      const { count } = await supabase
+        .from('crm_companies')
+        .select('*', { count: 'exact', head: true })
+        .eq('connection_id', conn.id)
+        .eq('is_deleted', false);
+      companyCounts[conn.id] = count || 0;
+    }));
+
+    const platforms = platformRaw.map((p) => {
+      const conn = connById.get(p.connectionId) || {};
+      const dist = p.qualityDistribution || {};
+      const high = Number(dist.high || 0);
+      const medium = Number(dist.medium || 0);
+      const low = Number(dist.low || 0);
+      const total = high + medium + low;
+
+      return {
+        provider: p.provider,
+        displayName: p.displayName || conn.display_name || 'Connected',
+        avgQualityScore: Number(p.avgQualityScore || 0),
+        totalContacts: Number(conn.contact_count || 0),
+        totalCompanies: Number(companyCounts[p.connectionId] || 0),
+        totalDeals: Number(conn.deal_count || 0),
+        totalMappedFields: Number(p.totalMappedFields || 0),
+        qualityDistribution: {
+          highPct: total > 0 ? Math.round((high / total) * 100) : 0,
+          medPct: total > 0 ? Math.round((medium / total) * 100) : 0,
+          lowPct: total > 0 ? Math.round((low / total) * 100) : 0,
         },
-        platforms: [
-          {
-            provider: 'salesforce',
-            displayName: 'Production Org',
-            avgQualityScore: 87,
-            totalContacts: 8450,
-            totalCompanies: 1240,
-            totalDeals: 210,
-            totalMappedFields: 22,
-            qualityDistribution: { highPct: 72, medPct: 21, lowPct: 7 },
-            fieldCoverage: {
-              email: 0.94, phone: 0.68, first_name: 0.99, last_name: 1.0,
-              title: 0.55, company_name: 0.82, department: 0.41,
-              lead_source: 0.73, lifecycle_stage: 0.60,
-            },
-            unresolvedErrors: 3,
-          },
-          {
-            provider: 'hubspot',
-            displayName: 'Marketing Portal',
-            avgQualityScore: 72,
-            totalContacts: 5800,
-            totalCompanies: 890,
-            totalDeals: 174,
-            totalMappedFields: 19,
-            qualityDistribution: { highPct: 58, medPct: 30, lowPct: 12 },
-            fieldCoverage: {
-              email: 0.91, phone: 0.52, first_name: 0.96, last_name: 0.98,
-              title: 0.38, company_name: 0.71, department: 0.22,
-              lead_source: 0.65, lifecycle_stage: 0.88,
-            },
-            unresolvedErrors: 7,
-          },
-          {
-            provider: 'pipedrive',
-            displayName: 'Sales Team CRM',
-            avgQualityScore: 64,
-            totalContacts: 2100,
-            totalCompanies: 450,
-            totalDeals: 89,
-            totalMappedFields: 12,
-            qualityDistribution: { highPct: 41, medPct: 38, lowPct: 21 },
-            fieldCoverage: {
-              email: 0.85, phone: 0.44, first_name: 0.92, last_name: 0.95,
-              title: 0.21, company_name: 0.60, department: 0.10,
-              lead_source: 0.30, lifecycle_stage: null,
-            },
-            unresolvedErrors: 2,
-          },
-          {
-            provider: 'gong',
-            displayName: 'Call Intelligence',
-            avgQualityScore: 91,
-            totalContacts: 0,
-            totalCompanies: 0,
-            totalDeals: 0,
-            totalMappedFields: 8,
-            qualityDistribution: { highPct: 88, medPct: 9, lowPct: 3 },
-            fieldCoverage: {
-              email: null, phone: null, first_name: null, last_name: null,
-              title: null, company_name: null, department: null,
-              lead_source: null, lifecycle_stage: null,
-            },
-            unresolvedErrors: 0,
-          }
-        ],
-        runs: [
-          { provider: 'salesforce', status: 'completed', recordsProcessed: 8450, recordsNormalized: 8312, recordsErrored: 3, avgQualityScore: 87, timeAgo: '23 mins ago', duration: '4.2s' },
-          { provider: 'hubspot', status: 'completed', recordsProcessed: 5800, recordsNormalized: 5614, recordsErrored: 7, avgQualityScore: 72, timeAgo: '23 mins ago', duration: '3.8s' },
-          { provider: 'pipedrive', status: 'partial', recordsProcessed: 2100, recordsNormalized: 1988, recordsErrored: 2, avgQualityScore: 64, timeAgo: '1 hour ago', duration: '2.1s' },
-          { provider: 'gong', status: 'completed', recordsProcessed: 340, recordsNormalized: 340, recordsErrored: 0, avgQualityScore: 91, timeAgo: '2 hours ago', duration: '0.8s' },
-          { provider: 'salesforce', status: 'completed', recordsProcessed: 8200, recordsNormalized: 8100, recordsErrored: 1, avgQualityScore: 85, timeAgo: '1 day ago', duration: '4.0s' },
-          { provider: 'hubspot', status: 'failed', recordsProcessed: 5800, recordsNormalized: 0, recordsErrored: 5800, avgQualityScore: 0, timeAgo: '2 days ago', duration: '0.3s' },
-        ]
-      });
-    }, 700);
-  });
+        fieldCoverage: p.fieldCoverage || {},
+        unresolvedErrors: Number(p.unresolvedErrors || 0),
+      };
+    });
+
+    const runs = runsRaw.map(run => ({
+      provider: run.provider,
+      status: run.status,
+      recordsProcessed: Number(run.records_processed || 0),
+      recordsNormalized: Number(run.records_normalized || 0),
+      recordsErrored: Number(run.records_errored || 0),
+      avgQualityScore: Number(run.avg_quality_score || 0),
+      timeAgo: formatTimeAgo(run.completed_at || run.started_at || run.created_at),
+      duration: formatDuration(run.started_at, run.completed_at),
+    }));
+
+    return {
+      stats: {
+        totalRecordsProcessed: Number(statsRaw.totalRecordsProcessed || 0),
+        totalRecordsNormalized: Number(statsRaw.totalRecordsNormalized || 0),
+        avgQualityScore: Number(statsRaw.avgQualityScore || 0),
+        totalRuns: Number(statsRaw.totalRuns || 0),
+        lastRunTime: formatTimeAgo(statsRaw?.lastNormalizationRun?.completed_at),
+        unresolvedErrors: Number(statsRaw.unresolvedErrors || 0),
+      },
+      platforms,
+      runs,
+    };
+  } catch (error) {
+    console.error('Failed to load normalization data:', error);
+    return emptyNormalizationData();
+  }
+}
+
+function emptyNormalizationData() {
+  return {
+    stats: {
+      totalRecordsProcessed: 0,
+      totalRecordsNormalized: 0,
+      avgQualityScore: 0,
+      totalRuns: 0,
+      lastRunTime: 'Never',
+      unresolvedErrors: 0,
+    },
+    platforms: [],
+    runs: [],
+  };
+}
+
+function formatTimeAgo(dateValue) {
+  if (!dateValue) return 'Never';
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return 'Unknown';
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'Just now';
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours} hr ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+}
+
+function formatDuration(startedAt, completedAt) {
+  if (!startedAt || !completedAt) return '—';
+  const start = new Date(startedAt);
+  const end = new Date(completedAt);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '—';
+  const seconds = Math.max(0, (end.getTime() - start.getTime()) / 1000);
+  return `${seconds.toFixed(1)}s`;
 }
 
 // Toast helper

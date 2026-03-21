@@ -29,6 +29,8 @@ async function loadDashboardData() {
             return;
         }
 
+    const recentContactsPromise = loadRecentContacts();
+
         // Load real data from backend
         const token = session.access_token;
         
@@ -78,12 +80,98 @@ async function loadDashboardData() {
 
         renderStats(mockData);
         renderSourceList(mockData.connections);
+        renderRecentContacts(await recentContactsPromise);
 
     } catch (error) {
         console.error('Error loading dashboard:', error);
         renderStats({ connections: [], totalContacts: 0, totalDeals: 0, avgQualityScore: 0 });
         renderEmptyState();
+        renderRecentContacts([]);
     }
+}
+
+async function loadRecentContacts() {
+    try {
+        const { data, error } = await supabase
+            .from('crm_contacts')
+            .select('first_name, last_name, email, phone, company_name, provider, updated_at')
+            .eq('is_deleted', false)
+            .order('updated_at', { ascending: false })
+            .limit(12);
+
+        if (error) {
+            console.error('Failed loading recent contacts:', error);
+            return [];
+        }
+
+        return data || [];
+    } catch (err) {
+        console.error('Failed loading recent contacts:', err);
+        return [];
+    }
+}
+
+function renderRecentContacts(contacts) {
+    const container = document.getElementById('dashboard-contacts-preview');
+    if (!container) return;
+
+    if (!contacts || contacts.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">👥</div>
+            <h3 class="empty-state-title">No contacts yet</h3>
+            <p class="empty-state-text">Run a sync from your connectors to populate contact records.</p>
+          </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Phone</th>
+            <th>Company</th>
+            <th>Provider</th>
+            <th>Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${contacts.map((c) => {
+            const fullName = `${c.first_name || ''} ${c.last_name || ''}`.trim() || '—';
+            const providerName = c.provider ? (c.provider.charAt(0).toUpperCase() + c.provider.slice(1)) : '—';
+            return `
+              <tr>
+                <td>${escapeHtml(fullName)}</td>
+                <td>${escapeHtml(c.email || '—')}</td>
+                <td>${escapeHtml(c.phone || '—')}</td>
+                <td>${escapeHtml(c.company_name || '—')}</td>
+                <td>${escapeHtml(providerName)}</td>
+                <td>${formatDateTime(c.updated_at)}</td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+}
+
+function formatDateTime(value) {
+    if (!value) return '—';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString();
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 function renderEmptyState() {
