@@ -16,29 +16,37 @@ The script used is [backend/cron-sync.js](backend/cron-sync.js).
 
 1. Railway → New Project → Deploy from GitHub
 2. Select this repo
-3. Set **Root Directory** to repo root (leave blank/default)
+3. Set **Root Directory** to `backend`
 
-This repo includes [nixpacks.toml](nixpacks.toml), which forces Railway to install and run from `backend` using:
+This repo includes [backend/nixpacks.toml](backend/nixpacks.toml), which forces Railway to install and run from backend using:
 
-- `npm --prefix backend install --omit=dev`
-- `npm --prefix backend run cron:sync`
+- `npm install --omit=dev`
+- `npm run cron:sync`
 
 ---
 
 ## 2) Start command (run-once)
 
-No manual start command is required if `nixpacks.toml` is present.
+No manual start command is required if `backend/nixpacks.toml` is present.
 
 If you override manually, use:
 
-`npm --prefix backend run cron:sync`
+Build Command: `npm install --omit=dev`
+
+Start Command: `npm run cron:sync`
 
 This command executes once and exits.
 
 ### If you saw `npm ci` lockfile mismatch errors
 
-That happens when Railway mixes root and backend package files.
-Using [nixpacks.toml](nixpacks.toml) avoids this by explicitly installing only backend dependencies.
+That happens when Railway mixes root and backend package files and runs `npm ci` against the wrong lockfile.
+
+Fix checklist:
+
+1. Root Directory must be `backend`
+2. Config file must be [backend/nixpacks.toml](backend/nixpacks.toml)
+3. Clear build cache and redeploy once
+4. If still needed, set Build Command manually to `npm install --omit=dev`
 
 ---
 
