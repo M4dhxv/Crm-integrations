@@ -345,6 +345,15 @@ function getHubSpotScopesFromEnvOrDefault() {
   return DEFAULT_HUBSPOT_OAUTH_SCOPES;
 }
 
+function getPipedriveRedirectUri(req) {
+  const explicit = String(process.env.PIPEDRIVE_REDIRECT_URI || '').trim();
+  if (explicit) return explicit.replace(/\/+$/, '');
+
+  const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+  const backendUrl = String(process.env.BACKEND_URL || dynamicHost).replace(/\/+$/, '');
+  return `${backendUrl}/api/callback/pipedrive`;
+}
+
 async function processPendingSyncJobsOnce(supabaseClient, limit = 5) {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const nowIso = new Date().toISOString();
@@ -452,6 +461,7 @@ app.get('/api/health', async (req, res) => {
 // Debug endpoint to check env vars are loaded
 app.get('/api/config-status', (req, res) => {
   const effectiveScopes = getHubSpotScopesFromEnvOrDefault();
+  const pipedriveRedirectUri = getPipedriveRedirectUri(req);
   res.json({
     build_commit: BUILD_COMMIT,
     supabase_url: process.env.VITE_SUPABASE_URL ? '✅ loaded' : '❌ missing',
@@ -464,6 +474,7 @@ app.get('/api/config-status', (req, res) => {
     pipedrive_client_id: process.env.PIPEDRIVE_CLIENT_ID ? '✅ loaded' : '❌ missing',
     pipedrive_client_secret: process.env.PIPEDRIVE_CLIENT_SECRET ? '✅ loaded' : '❌ missing',
     pipedrive_oauth_scopes_env: process.env.PIPEDRIVE_OAUTH_SCOPES || '(unset)',
+    pipedrive_redirect_uri_effective: pipedriveRedirectUri,
     hubspot_oauth_scopes_env: process.env.HUBSPOT_OAUTH_SCOPES || '(unset)',
     hubspot_oauth_scopes_effective: effectiveScopes.join(' '),
     hubspot_oauth_scope_count: effectiveScopes.length,
@@ -924,9 +935,7 @@ app.get(['/callback/hubspot', '/api/callback/hubspot'], async (req, res) => {
 // Pipedrive OAuth
 app.get(['/auth/pipedrive', '/api/auth/pipedrive'], (req, res) => {
   const { userId, state } = req.query;
-  const dynamicHost = `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
-  const backendUrl = process.env.BACKEND_URL || dynamicHost;
-  const redirectUri = `${backendUrl}/api/callback/pipedrive`;
+  const redirectUri = getPipedriveRedirectUri(req);
   const clientId = process.env.PIPEDRIVE_CLIENT_ID;
 
   if (!clientId) {
@@ -945,7 +954,7 @@ app.get(['/callback/pipedrive', '/api/callback/pipedrive'], async (req, res) => 
   const frontendUrl = process.env.FRONTEND_URL || dynamicHost || 'http://localhost:5173';
 
   try {
-    const backendUrl = process.env.BACKEND_URL || dynamicHost;
+    const redirectUri = getPipedriveRedirectUri(req);
     const oauthState = consumeOAuthState(String(state || ''), 'pipedrive');
     const userId = oauthState?.userId || (isUuid(state) ? state : null);
 
@@ -960,7 +969,7 @@ app.get(['/callback/pipedrive', '/api/callback/pipedrive'], async (req, res) => 
     const tokenBody = new URLSearchParams({
       grant_type: 'authorization_code',
       code: String(code),
-      redirect_uri: `${backendUrl}/api/callback/pipedrive`,
+      redirect_uri: redirectUri,
       client_id: process.env.PIPEDRIVE_CLIENT_ID,
       client_secret: process.env.PIPEDRIVE_CLIENT_SECRET,
     });
