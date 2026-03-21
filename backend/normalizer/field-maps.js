@@ -78,7 +78,7 @@ export const HUBSPOT_MAPS = {
     sourceObject: 'contacts',
     targetTable: 'crm_contacts',
     fields: {
-      vid:             { target: 'external_id',    transform: 'direct',          required: true },
+      id:              { target: 'external_id',    transform: 'direct',          required: true },
       'firstname':     { target: 'first_name',     transform: 'titlecase',       path: 'properties.firstname.value' },
       'lastname':      { target: 'last_name',      transform: 'titlecase',       required: true, path: 'properties.lastname.value' },
       'email':         { target: 'email',          transform: 'email_normalize', path: 'properties.email.value' },
@@ -92,7 +92,7 @@ export const HUBSPOT_MAPS = {
     sourceObject: 'companies',
     targetTable: 'crm_companies',
     fields: {
-      companyId:  { target: 'external_id',    transform: 'direct',    required: true },
+      id:         { target: 'external_id',    transform: 'direct',    required: true },
       'name':     { target: 'name',           transform: 'direct',    required: true, path: 'properties.name.value' },
       'domain':   { target: 'domain',         transform: 'lowercase', path: 'properties.domain.value' },
       'industry': { target: 'industry',       transform: 'direct',    path: 'properties.industry.value' },
@@ -104,7 +104,7 @@ export const HUBSPOT_MAPS = {
     sourceObject: 'deals',
     targetTable: 'crm_deals',
     fields: {
-      dealId:       { target: 'external_id', transform: 'direct',   required: true },
+      id:           { target: 'external_id', transform: 'direct',   required: true },
       'dealname':   { target: 'name',        transform: 'direct',   required: true, path: 'properties.dealname.value' },
       'amount':     { target: 'amount',      transform: 'direct',   path: 'properties.amount.value' },
       'dealstage':  { target: 'stage',       transform: 'direct',   path: 'properties.dealstage.value' },

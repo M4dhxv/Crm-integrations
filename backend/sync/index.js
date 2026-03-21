@@ -4,6 +4,7 @@
  * and handles writing to raw.source_objects.
  */
 import { runNormalizationPipeline } from '../normalizer/index.js';
+import { normalizeRecords } from '../normalizer/index.js';
 import * as salesforceAdapter from './adapters/salesforce.js';
 import * as hubspotAdapter from './adapters/hubspot.js';
 
@@ -12,6 +13,11 @@ const ADAPTERS = {
   hubspot: hubspotAdapter,
   // pipedrive: pipedriveAdapter, // TODO: add others
   // gong: gongAdapter,
+};
+
+const SUPPORTED_OBJECTS = {
+  hubspot: new Set(['contacts', 'companies', 'deals']),
+  salesforce: new Set(['contacts', 'leads', 'accounts', 'opportunities']),
 };
 
 /**
@@ -24,6 +30,9 @@ export async function processSyncJob(job, supabase) {
   const startedAt = Date.now();
   const currentAttempt = (job.attempts || 0) + 1;
   const maxAttempts = job.max_attempts || 3;
+  let connection = null;
+  let adapter = null;
+  let records = [];
   console.log(`[Sync] Starting job ${id} | ${provider} -> ${object_type}`);
 
   try {
@@ -38,24 +47,40 @@ export async function processSyncJob(job, supabase) {
       .eq('id', id);
 
     // 2. Fetch connection details/credentials
-    const { data: connection, error: connError } = await supabase
+    const { data: fetchedConnection, error: connError } = await supabase
       .from('data_source_connections')
       .select('user_id, credentials, instance_url')
       .eq('id', connection_id)
       .single();
 
-    if (connError || !connection) {
+    if (connError || !fetchedConnection) {
       throw new Error(`Connection ${connection_id} not found: ${connError?.message}`);
     }
+    connection = fetchedConnection;
 
     // 3. Select adapter
-    const adapter = ADAPTERS[provider];
+    adapter = ADAPTERS[provider];
     if (!adapter) {
       throw new Error(`Integration for provider '${provider}' is not implemented yet.`);
     }
 
+    const providerSupported = SUPPORTED_OBJECTS[provider];
+    if (providerSupported && !providerSupported.has(object_type)) {
+      await supabase
+        .from('sync_jobs')
+        .update({
+          status: 'cancelled',
+          error: `Skipped unsupported object type: ${object_type}`,
+          completed_at: new Date().toISOString(),
+        })
+        .eq('id', id);
+
+      console.warn(`[Sync] Job ${id} | CANCELLED unsupported object ${object_type}`);
+      return true;
+    }
+
     // 4. Fetch raw data from CRM API
-    const records = await adapter.fetchData(object_type, connection.credentials, connection.instance_url);
+    records = await adapter.fetchData(object_type, connection.credentials, connection.instance_url);
     console.log(`[Sync] Job ${id} | Pulled ${records.length} records from ${provider}`);
 
     // Persist refreshed credentials (if adapter updated token)
@@ -65,6 +90,7 @@ export async function processSyncJob(job, supabase) {
       .eq('id', connection_id);
 
     // 5. Upsert into raw.source_objects
+    let rawWriteAvailable = true;
     if (records.length > 0) {
       const rawInserts = records.map(record => ({
         connection_id,
@@ -74,16 +100,25 @@ export async function processSyncJob(job, supabase) {
         payload: record,
       }));
 
-      // Because source_objects can be large, insert in chunks
-      const CHUNK_SIZE = 500;
-      for (let i = 0; i < rawInserts.length; i += CHUNK_SIZE) {
-        const chunk = rawInserts.slice(i, i + CHUNK_SIZE);
-        const { error: insertError } = await supabase
-          .schema('raw')
-          .from('source_objects')
-          .insert(chunk);
-        
-        if (insertError) throw insertError;
+      try {
+        // Because source_objects can be large, insert in chunks
+        const CHUNK_SIZE = 500;
+        for (let i = 0; i < rawInserts.length; i += CHUNK_SIZE) {
+          const chunk = rawInserts.slice(i, i + CHUNK_SIZE);
+          const { error: insertError } = await supabase
+            .schema('raw')
+            .from('source_objects')
+            .insert(chunk);
+          
+          if (insertError) throw insertError;
+        }
+      } catch (rawErr) {
+        if (isRawSchemaUnavailableError(rawErr)) {
+          rawWriteAvailable = false;
+          console.warn(`[Sync] Job ${id} | Raw schema unavailable, continuing with direct normalization`);
+        } else {
+          throw rawErr;
+        }
       }
     }
 
@@ -110,15 +145,68 @@ export async function processSyncJob(job, supabase) {
       .eq('id', id);
 
     // 7. Trigger Normalization Pipeline
-    // This connects the ingestion directly to the standardizer!
+    // If raw schema is unavailable in PostgREST, normalize directly from fetched records.
     console.log(`[Sync] Job ${id} | Triggering Normalization for ${provider}...`);
-    await runNormalizationPipeline(supabase, connection_id, provider, { userId: connection.user_id });
+    if (rawWriteAvailable) {
+      await runNormalizationPipeline(supabase, connection_id, provider, { userId: connection.user_id });
+    } else {
+      await normalizeObjectBatchDirectly(
+        supabase,
+        connection_id,
+        provider,
+        object_type,
+        records,
+        { userId: connection.user_id }
+      );
+    }
 
     console.log(`[Sync] Job ${id} | Done in ${Date.now() - startedAt}ms.`);
     return true;
 
   } catch (error) {
     console.error(`[Sync] Job ${id} | FAILED:`, error.message);
+
+    if (isRawSchemaUnavailableError(error) && connection && adapter) {
+      try {
+        await normalizeObjectBatchDirectly(
+          supabase,
+          connection_id,
+          provider,
+          object_type,
+          records,
+          { userId: connection.user_id }
+        );
+
+        await supabase
+          .from('sync_jobs')
+          .update({
+            status: 'completed',
+            records_fetched: records.length,
+            records_upserted: records.length,
+            completed_at: new Date().toISOString(),
+            error: null,
+          })
+          .eq('id', id);
+
+        console.warn(`[Sync] Job ${id} | Completed via fallback after raw schema error.`);
+        return true;
+      } catch (fallbackError) {
+        console.error(`[Sync] Job ${id} | Fallback failed:`, fallbackError.message);
+      }
+    }
+
+    if (/Unsupported .* object type/i.test(String(error?.message || ''))) {
+      await supabase
+        .from('sync_jobs')
+        .update({
+          status: 'cancelled',
+          error: error.message,
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', id);
+      console.warn(`[Sync] Job ${id} | CANCELLED unsupported object ${object_type}`);
+      return true;
+    }
 
     const retryable = error?.retryable === true;
     const canRetry = retryable && currentAttempt < maxAttempts;
@@ -147,5 +235,49 @@ export async function processSyncJob(job, supabase) {
     }
 
     return false;
+  }
+}
+
+function isRawSchemaUnavailableError(error) {
+  const msg = String(error?.message || '');
+  return msg.includes('Invalid schema: raw') || msg.includes("public.raw.source_objects");
+}
+
+async function normalizeObjectBatchDirectly(supabase, connectionId, provider, objectType, records, meta) {
+  const rawLikeRecords = (records || []).map(record => ({
+    external_id: record?.id,
+    payload: record,
+  }));
+
+  const result = await normalizeRecords(
+    supabase,
+    connectionId,
+    provider,
+    objectType,
+    rawLikeRecords,
+    meta,
+  );
+
+  if (result.normalized.length > 0) {
+    const { error: upsertError } = await supabase
+      .from(result.targetTable)
+      .upsert(
+        result.normalized.filter(r => !r._company_ref && !r._owner_ref && r.external_id),
+        { onConflict: 'connection_id,provider,external_id' }
+      );
+    if (upsertError) throw upsertError;
+  }
+
+  if (result.errors.length > 0) {
+    await supabase.from('transform_errors').insert(
+      result.errors.map(e => ({
+        connection_id: connectionId,
+        user_id: meta.userId,
+        provider,
+        object_type: objectType,
+        error_message: e.error,
+        error_detail: { raw: e.raw },
+      }))
+    );
   }
 }

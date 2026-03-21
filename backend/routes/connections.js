@@ -206,14 +206,18 @@ router.post('/:id/sync', async (req, res, next) => {
     }
 
     // Create sync jobs for each object
-    const supported = PROVIDER_SUPPORTED_OBJECTS[providerKey];
-    const enabledObjects = (objects || []).filter(obj => !supported || supported.has(obj.object_type));
+      const supported = PROVIDER_SUPPORTED_OBJECTS[providerKey];
+      const enabledObjects = (objects || []).filter(obj => {
+        const objectKey = String(obj.object_type || '').toLowerCase();
+        return !supported || supported.has(objectKey);
+      });
     const jobs = enabledObjects.map(obj => ({
       connection_id: id,
       provider: providerKey,
-      object_type: obj.object_type,
+        object_type: String(obj.object_type || '').toLowerCase(),
       job_type: 'incremental',
       status: 'pending',
+      scheduled_at: new Date().toISOString(),
     }));
 
     if (jobs.length > 0) {
